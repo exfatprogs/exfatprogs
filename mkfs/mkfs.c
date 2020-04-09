@@ -561,6 +561,7 @@ static long long parse_cluster_size(const char *size)
 	return byte_size;
 }
 
+unsigned int print_level = EXFAT_INFO;
 int main(int argc, char *argv[])
 {
 	int c;

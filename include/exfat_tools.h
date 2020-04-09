@@ -76,7 +76,7 @@ ssize_t exfat_write(int fd, void *buf, size_t size, off_t offset);
  * Exfat Print
  */
 
-static unsigned int print_level = 1;
+extern unsigned int print_level;
 
 #define EXFAT_ERROR	(0)
 #define EXFAT_INFO	(1)

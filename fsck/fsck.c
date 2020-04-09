@@ -1196,6 +1196,7 @@ void exfat_show_stat()
 			exfat_stat.file_count - exfat_stat.file_free_count);
 }
 
+unsigned int print_level = EXFAT_ERROR;
 int main(int argc, char * const argv[])
 {
 	int c, ret;
@@ -1203,8 +1204,6 @@ int main(int argc, char * const argv[])
 	struct exfat_blk_dev bd = {0,};
 	struct exfat *exfat = NULL;
 	bool version_only = false;
-
-	print_level = EXFAT_ERROR;
 
 	opterr = 0;
 	while ((c = getopt_long(argc, argv, "rynVvh", opts, NULL)) != EOF) {
