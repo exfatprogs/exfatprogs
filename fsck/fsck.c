@@ -1088,7 +1088,6 @@ static int read_children(struct exfat *exfat, struct exfat_inode *dir)
 
 		exfat_de_iter_advance(de_iter, dentry_count);
 	}
-out:
 	list_splice(&sub_dir_list, &exfat->dir_list);
 	return 0;
 err:
