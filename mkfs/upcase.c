@@ -502,10 +502,9 @@ static const unsigned char upcase_table[EXFAT_UPCASE_TABLE_SIZE] = {
 	0xFE, 0xFF, 0xFF, 0xFF
 };
 
-int exfat_create_upcase_table(struct exfat_blk_dev *bd,
-		struct exfat_user_input *ui)
+int exfat_create_upcase_table(struct exfat_blk_dev *bd)
 {
-	int ut_off, nbytes;
+	int nbytes;
 
 	lseek(bd->dev_fd, finfo.ut_byte_off, SEEK_SET);
 	nbytes = write(bd->dev_fd, upcase_table, EXFAT_UPCASE_TABLE_SIZE);

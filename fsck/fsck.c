@@ -155,7 +155,7 @@ static void inode_free_file_children(struct exfat_inode *dir)
  */
 static void inode_free_ancestors(struct exfat_inode *child)
 {
-	struct exfat_inode *parent, *node;
+	struct exfat_inode *parent;
 
 	if (!list_empty(&child->children))
 		return;
@@ -202,7 +202,7 @@ static void free_exfat(struct exfat *exfat)
 
 static void exfat_free_dir_list(struct exfat *exfat)
 {
-	struct exfat_inode *dir, *file, *i, *k;
+	struct exfat_inode *dir, *i;
 
 	list_for_each_entry_safe(dir, i, &exfat->dir_list, list) {
 		inode_free_file_children(dir);
@@ -307,7 +307,7 @@ static off_t exfat_s2o(struct exfat *exfat, off_t sect)
 static off_t exfat_c2o(struct exfat *exfat, unsigned int clus)
 {
 	if (clus < EXFAT_FIRST_CLUSTER)
-		return ~0ULL;
+		return ~0L;
 
 	return exfat_s2o(exfat, le32_to_cpu(exfat->bs->bsx.clu_offset) +
 				((clus - EXFAT_FIRST_CLUSTER) <<
@@ -535,9 +535,8 @@ bool get_ancestors(struct exfat_inode *child,
 
 static int resolve_path(struct path_resolve_ctx *ctx, struct exfat_inode *child)
 {
-	int ret = 0;
 	int depth, i;
-	int name_len, path_len;
+	int name_len;
 	__le16 *utf16_path;
 	size_t in_size;
 
@@ -693,7 +692,6 @@ off_t exfat_de_iter_file_offset(struct exfat_de_iter *iter)
 static bool check_inode(struct exfat *exfat, struct exfat_inode *parent,
 						struct exfat_inode *node)
 {
-	int clus_count;
 	bool ret = false;
 
 	if (node->size == 0 && node->first_clus != EXFAT_FREE_CLUSTER) {
@@ -1191,7 +1189,7 @@ void exfat_show_info(struct exfat *exfat)
 			le32_to_cpu(exfat->bs->bsx.clu_offset));
 }
 
-void exfat_show_stat(struct exfat *exfat)
+void exfat_show_stat()
 {
 	exfat_debug("Found directories: %ld\n", exfat_stat.dir_count);
 	exfat_debug("Found files: %ld\n", exfat_stat.file_count);
@@ -1300,7 +1298,7 @@ int main(int argc, char * const argv[])
 	printf("%s: clean\n", ui.ei.dev_name);
 	ret = FSCK_EXIT_NO_ERRORS;
 out:
-	exfat_show_stat(exfat);
+	exfat_show_stat();
 err:
 	free_exfat(exfat);
 	close(bd.dev_fd);
