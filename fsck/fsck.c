@@ -619,8 +619,8 @@ int exfat_de_iter_get(struct exfat_de_iter *iter,
 					int ith, struct exfat_dentry **dentry)
 {
 	off_t de_next_file_offset;
-	int de_offset, de_next_offset;
-	bool need_read_1_clus = false, need_read_2_clus = false;
+	int de_next_offset;
+	bool need_read_1_clus = false;
 	int ret;
 
 	de_next_file_offset = iter->de_file_offset +
@@ -639,7 +639,6 @@ int exfat_de_iter_get(struct exfat_de_iter *iter,
 		iter->read_size * 2)
 		return -ERANGE;
 
-	de_offset = iter->de_file_offset % (iter->read_size * 2);
 	de_next_offset = de_next_file_offset % (iter->read_size * 2);
 
 	/* read a cluster if needed */
@@ -647,7 +646,6 @@ int exfat_de_iter_get(struct exfat_de_iter *iter,
 		void *buf;
 
 		need_read_1_clus = de_next_offset < iter->read_size;
-		need_read_2_clus = de_next_offset >= iter->read_size;
 		buf = need_read_1_clus ?
 			iter->dentries : iter->dentries + iter->read_size;
 
