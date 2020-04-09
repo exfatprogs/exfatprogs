@@ -430,7 +430,7 @@ static bool exfat_boot_region_check(struct exfat *exfat)
 
 	ret = exfat_read(exfat->blk_dev->dev_fd, bs, sizeof(*bs), 0);
 	if (ret != sizeof(*bs)) {
-		exfat_err("failed to read a boot sector. %ld\n", ret);
+		exfat_err("failed to read a boot sector. %zd\n", ret);
 		goto err;
 	}
 
@@ -452,7 +452,7 @@ static bool exfat_boot_region_check(struct exfat *exfat)
 
 	ret = boot_region_checksum(exfat);
 	if (ret) {
-		exfat_err("failed to verify the checksum of a boot region. %ld\n",
+		exfat_err("failed to verify the checksum of a boot region. %zd\n",
 			ret);
 		goto err;
 	}
@@ -557,7 +557,7 @@ static int resolve_path(struct path_resolve_ctx *ctx, struct exfat_inode *child)
 		memcpy((char *)utf16_path, (char *)ctx->ancestors[i]->name,
 				name_len * 2);
 		utf16_path += name_len;
-		memcpy((char *)utf16_path, u"/", 2);
+		memcpy((char *)utf16_path, "/", 2);
 		utf16_path++;
 	}
 
@@ -1153,7 +1153,6 @@ out:
 static bool exfat_root_dir_check(struct exfat *exfat)
 {
 	struct exfat_inode *root;
-	int ret;
 	clus_t clus_count;
 
 	root = alloc_exfat_inode(ATTR_SUBDIR);
@@ -1164,8 +1163,7 @@ static bool exfat_root_dir_check(struct exfat *exfat)
 
 	root->first_clus = le32_to_cpu(exfat->bs->bsx.root_cluster);
 	if (!inode_get_clus_count(exfat, root, &clus_count)) {
-		exfat_err("failed to follow the cluster chain of root. %d\n",
-			ret);
+		exfat_err("failed to follow the cluster chain of root\n");
 		goto err;
 	}
 	root->size = clus_count * EXFAT_CLUSTER_SIZE(exfat->bs);
