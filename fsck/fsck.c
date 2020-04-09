@@ -353,7 +353,7 @@ static ssize_t exfat_file_read(struct exfat *exfat, struct exfat_inode *node,
 			return -EIO;
 
 		clus_offset = 0;
-		buf += read_size;
+		buf = (char*)buf + read_size;
 		remain_size -= read_size;
 		if (remain_size == 0)
 			return total_size;
