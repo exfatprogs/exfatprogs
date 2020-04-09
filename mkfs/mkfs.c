@@ -488,6 +488,7 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 		total_written += nbytes;
 	} while (total_written <= size);
 
+	free(buf);
 	exfat_msg(EXFAT_DEBUG,
 		"zero out written size : %llu, disk size : %llu\n",
 		total_written, bd->size);
