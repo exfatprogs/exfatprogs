@@ -59,21 +59,21 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 	ppbr->signature = cpu_to_le16(PBR_SIGNATURE);
 
 	exfat_msg(EXFAT_DEBUG, "Volume Length(sectors) : %llu\n",
-		cpu_to_le64(pbsx->vol_length));
+		le64_to_cpu(pbsx->vol_length));
 	exfat_msg(EXFAT_DEBUG, "FAT Offset(sector offset) : %u\n",
-		cpu_to_le64(pbsx->fat_offset));
+		le32_to_cpu(pbsx->fat_offset));
 	exfat_msg(EXFAT_DEBUG, "FAT Length(sectors) : %u\n",
-		cpu_to_le32(pbsx->fat_length));
+		le32_to_cpu(pbsx->fat_length));
 	exfat_msg(EXFAT_DEBUG, "Cluster Heap Offset (sector offset) : %u\n",
-		cpu_to_le32(pbsx->clu_offset));
+		le32_to_cpu(pbsx->clu_offset));
 	exfat_msg(EXFAT_DEBUG, "Cluster Count (sectors) : %u\n",
-		cpu_to_le32(pbsx->clu_count));
+		le32_to_cpu(pbsx->clu_count));
 	exfat_msg(EXFAT_DEBUG, "Root Cluster (cluster offset) : %u\n",
-		cpu_to_le32(pbsx->root_cluster));
+		le32_to_cpu(pbsx->root_cluster));
 	exfat_msg(EXFAT_DEBUG, "Sector Size Bits : %u\n",
-		cpu_to_le32(pbsx->sect_size_bits));
+		pbsx->sect_size_bits);
 	exfat_msg(EXFAT_DEBUG, "Sector per Cluster bits : %u\n",
-		cpu_to_le32(pbsx->sect_per_clus_bits));
+		pbsx->sect_per_clus_bits);
 }
 
 static int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
