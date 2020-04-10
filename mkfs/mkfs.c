@@ -377,7 +377,7 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 	ed[2].type = EXFAT_UPCASE;
 	ed[2].upcase_checksum = cpu_to_le32(0xe619d30d);
 	ed[2].upcase_start_clu = cpu_to_le32(finfo.ut_start_clu);
-	ed[2].upcase_size = cpu_to_le32(EXFAT_UPCASE_TABLE_SIZE);
+	ed[2].upcase_size = cpu_to_le64(EXFAT_UPCASE_TABLE_SIZE);
 
 	lseek(bd->dev_fd, finfo.root_byte_off, SEEK_SET);
 	nbytes = write(bd->dev_fd, ed, dentries_len);
