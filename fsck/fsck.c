@@ -1183,9 +1183,9 @@ err:
 void exfat_show_info(struct exfat *exfat)
 {
 	exfat_info("Bytes per sector: %d\n",
-			1 << le32_to_cpu(exfat->bs->bsx.sect_size_bits));
+			1 << exfat->bs->bsx.sect_size_bits);
 	exfat_info("Sectors per cluster: %d\n",
-			1 << le32_to_cpu(exfat->bs->bsx.sect_per_clus_bits));
+			1 << exfat->bs->bsx.sect_per_clus_bits);
 	exfat_info("Cluster heap count: %d(0x%x)\n",
 			le32_to_cpu(exfat->bs->bsx.clu_count),
 			le32_to_cpu(exfat->bs->bsx.clu_count));
