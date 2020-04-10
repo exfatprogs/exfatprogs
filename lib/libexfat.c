@@ -18,9 +18,9 @@
 #include "exfat_tools.h"
 #include "mkfs.h"
 
-#if defined(__LITTLE_ENDIAN)
+#if __BYTE_ORDDER == __LITTLE_ENDIAN
 #define BITOP_LE_SWIZZLE        0
-#elif defined(__BIG_ENDIAN)
+#else
 #define BITOP_LE_SWIZZLE	(~0x7)
 #endif
 
