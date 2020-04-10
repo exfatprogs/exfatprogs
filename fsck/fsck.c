@@ -430,7 +430,7 @@ static bool exfat_boot_region_check(struct exfat *exfat)
 
 	ret = exfat_read(exfat->blk_dev->dev_fd, bs, sizeof(*bs), 0);
 	if (ret != sizeof(*bs)) {
-		exfat_err("failed to read a boot sector. %ld\n", ret);
+		exfat_err("failed to read a boot sector. %d\n", (int)ret);
 		goto err;
 	}
 
@@ -452,8 +452,8 @@ static bool exfat_boot_region_check(struct exfat *exfat)
 
 	ret = boot_region_checksum(exfat);
 	if (ret) {
-		exfat_err("failed to verify the checksum of a boot region. %ld\n",
-			ret);
+		exfat_err("failed to verify the checksum of a boot region. %d\n",
+			(int)ret);
 		goto err;
 	}
 
