@@ -23,7 +23,8 @@
 #define cpu_to_le32(x)	\
 	((((x) & 0xff000000u) >> 24) | (((x) & 0x00ff0000u) >>  8) | \
 	 (((x) & 0x0000ff00u) <<  8) | (((x) & 0x000000ffu) << 24))
-#define cpu_to_le64(x)	((cpu_to_le32(x) << 32) | cpu_to_le32((x) >> 32))
+#define cpu_to_le64(x)	(cpu_to_le32((uint64_t)(x)) << 32 | \
+			cpu_to_le32((uint64_t)(x) >> 32))
 #endif
 
 #define le64_to_cpu(x)  cpu_to_le64(x)
