@@ -920,6 +920,10 @@ static bool read_alloc_bitmap(struct exfat_de_iter *iter)
 	if (exfat_de_iter_get(iter, 0, &dentry))
 		return false;
 
+	exfat_debug("start cluster %#x, size %#llx\n",
+			le32_to_cpu(dentry->bitmap_start_clu),
+			le64_to_cpu(dentry->bitmap_size));
+
 	exfat->bit_count = le32_to_cpu(exfat->bs->bsx.clu_count);
 
 	if (le64_to_cpu(dentry->bitmap_size) <
@@ -933,10 +937,6 @@ static bool read_alloc_bitmap(struct exfat_de_iter *iter)
 				le32_to_cpu(dentry->bitmap_start_clu));
 		return false;
 	}
-
-	exfat_debug("start cluster %#x, size %#llx\n",
-			le32_to_cpu(dentry->bitmap_start_clu),
-			le64_to_cpu(dentry->bitmap_size));
 
 	/* TODO: bitmap could be very large. */
 	alloc_bitmap_size = EXFAT_BITMAP_SIZE(exfat->bit_count);
