@@ -135,7 +135,7 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		struct exfat_blk_dev *bd)
 {
 	int fd, ret = -1;
-	long long blk_dev_size;
+	off_t blk_dev_size;
 
 	fd = open(ui->dev_name, ui->writeable ? O_RDWR : O_RDONLY);
 	if (fd < 0)
@@ -144,8 +144,8 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 	blk_dev_size = lseek(fd, 0, SEEK_END);
 	if (blk_dev_size <= 0) {
 		exfat_msg(EXFAT_ERROR,
-			"invalid block device size(%s) : %lld\n",
-			ui->dev_name, blk_dev_size);
+			"invalid block device size(%s)\n",
+			ui->dev_name);
 		ret = blk_dev_size;
 		close(fd);
 		goto out;

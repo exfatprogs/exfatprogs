@@ -1,4 +1,4 @@
-AM_CFLAGS = -I$(top_srcdir)/include -fno-common
+AM_CFLAGS = -include $(top_srcdir)/config.h -I$(top_srcdir)/include -fno-common
 LIBS = -lm
 mkfs_exfat_LDADD = $(top_builddir)/lib/libexfat.la
 
