@@ -55,7 +55,7 @@ struct exfat_user_input {
 	unsigned int cluster_size;
 	unsigned int sec_per_clu;
 	bool quick;
-	__u16 volume_label[11];
+	__u16 volume_label[VOLUME_LABEL_MAX_LEN];
 	int volume_label_len;
 };
 

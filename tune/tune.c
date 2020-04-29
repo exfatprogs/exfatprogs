@@ -65,7 +65,7 @@ static off_t exfat_get_root_entry_offset(struct exfat_blk_dev *bd)
 static int exfat_get_volume_label(struct exfat_blk_dev *bd, off_t root_clu_off)
 {
 	struct exfat_dentry *vol_entry;
-	char volume_label[11];
+	char volume_label[VOLUME_LABEL_MAX_LEN];
 	int nbytes;
 
 	vol_entry = malloc(sizeof(struct exfat_dentry));
@@ -81,7 +81,7 @@ static int exfat_get_volume_label(struct exfat_blk_dev *bd, off_t root_clu_off)
 		return -1;
 	}
 
-	memset(volume_label, 0, 11);
+	memset(volume_label, 0, sizeof(volume_label));
 	if (exfat_utf16_dec(vol_entry->vol_label, vol_entry->vol_char_cnt*2,
 		volume_label, sizeof(volume_label)) < 0) {
 		exfat_err("failed to decode volume label\n");
@@ -97,7 +97,7 @@ static int exfat_set_volume_label(struct exfat_blk_dev *bd,
 {
 	struct exfat_dentry vol;
 	int nbytes;
-	__u16 volume_label[11];
+	__u16 volume_label[VOLUME_LABEL_MAX_LEN];
 	int volume_label_len;
 
 	volume_label_len = exfat_utf16_enc(label_input,
@@ -108,7 +108,7 @@ static int exfat_set_volume_label(struct exfat_blk_dev *bd,
 	}
 
 	vol.type = EXFAT_VOLUME;
-	memset(vol.vol_label, 0, 22);
+	memset(vol.vol_label, 0, sizeof(vol.vol_label));
 	memcpy(vol.vol_label, volume_label, volume_label_len);
 	vol.vol_char_cnt = volume_label_len/2;
 
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
 	struct exfat_user_input ui;
 	bool version_only = false;
 	int flags = 0;
-	char label_input[11];
+	char label_input[VOLUME_LABEL_MAX_LEN];
 	off_t root_clu_off;
 
 	init_user_input(&ui);
@@ -148,7 +148,7 @@ int main(int argc, char *argv[])
 		switch (c) {
 		case 'l':
 			if (optarg) {
-				snprintf(label_input, 11, "%s", optarg);
+				snprintf(label_input, sizeof(label_input), "%s", optarg);
 				flags = EXFAT_SET_LABEL;
 			} else
 				flags = EXFAT_GET_LABEL;
