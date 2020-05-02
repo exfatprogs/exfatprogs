@@ -41,7 +41,7 @@ Usage example:
     3. For full format(zero out)
         mkfs.exfat -f /dev/sda1
     4. For set volume label, use -l option with string user want.
-        mkfs.exfat -l "my usb" /dev/sda1
+        mkfs.exfat -L "my usb" /dev/sda1
 
 - fsck.exfat:
     Check the consistency of your exfat filesystem and optionally repair a corrupted device formatted by exfat.
