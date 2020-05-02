@@ -58,7 +58,7 @@ Usage example:
     1. print current volume label.
         tune.exfat -l /dev/sda1
     2. set new volume label.
-        tune.exfat -l"new label" /dev/sda1
+        tune.exfat -L "new label" /dev/sda1
 ```
 
 ## Sending feedback
