@@ -17,7 +17,6 @@
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
-#include "mkfs.h"
 #include "version.h"
 
 #ifdef WORDS_BIGENDIAN

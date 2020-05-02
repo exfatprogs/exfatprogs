@@ -27,6 +27,8 @@
 
 #define EXFAT_MAX_NUM_CLUSTER		(0xFFFFFFF5)
 
+#define DEFAULT_SECTOR_SIZE	(512)
+
 /* Upcase tabel macro */
 #define EXFAT_UPCASE_TABLE_SIZE		(5836)
 
