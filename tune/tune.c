@@ -65,7 +65,7 @@ static off_t exfat_get_root_entry_offset(struct exfat_blk_dev *bd)
 static int exfat_get_volume_label(struct exfat_blk_dev *bd, off_t root_clu_off)
 {
 	struct exfat_dentry *vol_entry;
-	char volume_label[VOLUME_LABEL_MAX_LEN];
+	char volume_label[VOLUME_LABEL_BUFFER_SIZE];
 	int nbytes;
 
 	vol_entry = malloc(sizeof(struct exfat_dentry));
@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
 	struct exfat_user_input ui;
 	bool version_only = false;
 	int flags = 0;
-	char label_input[VOLUME_LABEL_MAX_LEN];
+	char label_input[VOLUME_LABEL_BUFFER_SIZE];
 	off_t root_clu_off;
 
 	init_user_input(&ui);
