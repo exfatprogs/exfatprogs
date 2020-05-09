@@ -5,5 +5,3 @@ mkfs_exfat_LDADD = $(top_builddir)/lib/libexfat.a
 sbin_PROGRAMS = mkfs.exfat
 
 mkfs_exfat_SOURCES = mkfs.c upcase.c mkfs.h
-
-man_MANS = mkfs.exfat.8
