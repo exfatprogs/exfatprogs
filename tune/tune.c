@@ -17,11 +17,11 @@
 static void usage(void)
 {
 	fprintf(stderr, "Usage: tune.exfat\n");
-	fprintf(stderr, "\t-l | --print-label   Print volume label\n");
-	fprintf(stderr, "\t-L | --set-label     Set volume label\n");
-	fprintf(stderr, "\t-V | --version       Show version\n");
-	fprintf(stderr, "\t-v | --verbose       Print debug\n");
-	fprintf(stderr, "\t-h | --help          Show help\n");
+	fprintf(stderr, "\t-l | --print-label                    Print volume label\n");
+	fprintf(stderr, "\t-L | --volume-label=label             Set volume label\n");
+	fprintf(stderr, "\t-V | --version                        Show version\n");
+	fprintf(stderr, "\t-v | --verbose                        Print debug\n");
+	fprintf(stderr, "\t-h | --help                           Show help\n");
 
 	exit(EXIT_FAILURE);
 }
