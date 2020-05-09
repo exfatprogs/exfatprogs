@@ -383,7 +383,7 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 static void usage(void)
 {
 	fprintf(stderr, "Usage: mkfs.exfat\n");
-	fprintf(stderr, "\t-L string | --volume-label=string    Set volume label\n");
+	fprintf(stderr, "\t-L | --volume-label                  Set volume label\n");
 	fprintf(stderr, "\t-c | --cluster-size                  Set cluster size\n");
 	fprintf(stderr, "\t-f | --full-format                   Full format\n");
 	fprintf(stderr, "\t-V | --version                       Show version\n");
