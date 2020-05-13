@@ -666,7 +666,7 @@ static int exfat_de_iter_get(struct exfat_de_iter *iter,
 			iter->read_size, iter->next_read_offset);
 		if (ret == EOF) {
 			return EOF;
-		} else if (ret <= 0) {
+		} else if (ret < 0) {
 			exfat_err("failed to read a cluster. %d\n", ret);
 			return ret;
 		}
