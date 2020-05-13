@@ -92,15 +92,15 @@ bool exfat_repair(struct exfat *exfat, er_problem_code_t prcode,
 	struct exfat_repair_problem *pr = NULL;
 	int need_repair;
 
-	need_repair = ask_repair(exfat, pr);
-	if (!need_repair)
-		return false;
-
 	pr = find_problem(prcode);
 	if (!pr) {
 		exfat_err("unknown problem code. %#x\n", prcode);
 		return false;
 	}
+
+	need_repair = ask_repair(exfat, pr);
+	if (!need_repair)
+		return false;
 
 	return pr->fix_problem(exfat, rctx);
 }
