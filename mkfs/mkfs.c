@@ -622,23 +622,24 @@ int main(int argc, char *argv[])
 
 	ret = exfat_build_mkfs_info(&bd, &ui);
 	if (ret)
-		goto out;
+		goto close;
 
 	ret = exfat_zero_out_disk(&bd, &ui);
 	if (ret)
-		goto out;
+		goto close;
 
 	ret = make_exfat(&bd, &ui);
 	if (ret)
-		goto out;
+		goto close;
 
 	exfat_info("Synchronizing...\n");
 	ret = fsync(bd.dev_fd);
+close:
+	close(bd.dev_fd);
 out:
 	if (!ret)
 		exfat_info("\nexFAT format complete!\n");
 	else
 		exfat_info("\nexFAT format fail!\n");
-	close(bd.dev_fd);
 	return ret;
 }
