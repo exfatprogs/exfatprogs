@@ -215,6 +215,7 @@ ssize_t exfat_utf16_enc(const char *in_str, __u16 *out_str, size_t out_size)
 	if (mbstowcs(wcs, in_str, mbs_len+1) == (size_t)-1) {
 		if (errno == EINVAL || errno == EILSEQ)
 			exfat_err("invalid character sequence in current locale\n");
+		free(wcs);
 		return -errno;
 	}
 
