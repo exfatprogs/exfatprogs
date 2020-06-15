@@ -24,6 +24,7 @@ struct exfat_mkfs_info {
 	unsigned int root_byte_off;
 	unsigned int root_byte_len;
 	unsigned int root_start_clu;
+	unsigned int volume_serial;
 };
 
 extern struct exfat_mkfs_info finfo;
