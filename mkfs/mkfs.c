@@ -15,7 +15,6 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <errno.h>
-#include <math.h>
 #include <locale.h>
 
 #include "exfat_ondisk.h"
@@ -29,6 +28,7 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 {
 	struct bpb64 *pbpb = &ppbr->bpb;
 	struct bsx64 *pbsx = &ppbr->bsx;
+	unsigned int i;
 
 	/* Fill exfat BIOS paramemter block */
 	pbpb->jmp_boot[0] = 0xeb;
@@ -48,7 +48,10 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 	pbsx->vol_serial = cpu_to_le32(1234);
 	pbsx->vol_flags = 0;
 	pbsx->sect_size_bits = bd->sector_size_bits;
-	pbsx->sect_per_clus_bits = log2(ui->cluster_size / bd->sector_size);
+	pbsx->sect_per_clus_bits = 0;
+	/* Compute base 2 logarithm of ui->cluster_size / bd->sector_size */
+	for (i = ui->cluster_size / bd->sector_size; i > 1; i /= 2)
+		pbsx->sect_per_clus_bits++;
 	pbsx->num_fats = 1;
 	/* fs_version[0] : minor and fs_version[1] : major */
 	pbsx->fs_version[0] = 0;
