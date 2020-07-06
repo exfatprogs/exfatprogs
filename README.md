@@ -68,3 +68,7 @@ If you have any issues, please create [issues][1] or contact to [Namjae Jeon](ma
 
 [1]: https://github.com/exfatprogs/exfatprogs/issues
 [2]: https://github.com/exfatprogs/exfatprogs/pulls
+
+## Contributor information
+* Please base your pull requests on the `exfat-next` branch.
+* Make sure you add 'Signed-Off' information to your commits (e. g. `git commit --signoff`).
