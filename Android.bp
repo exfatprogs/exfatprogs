@@ -1,5 +1,8 @@
 // Copyright 2020 The Android Open Source Project
 
+soong_namespace {
+}
+
 cc_library_headers {
     name: "libexfatprogs-headers",
     export_include_dirs: [
