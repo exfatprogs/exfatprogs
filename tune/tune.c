@@ -18,7 +18,9 @@ static void usage(void)
 {
 	fprintf(stderr, "Usage: tune.exfat\n");
 	fprintf(stderr, "\t-l | --print-label                    Print volume label\n");
-	fprintf(stderr, "\t-L | --volume-label=label             Set volume label\n");
+	fprintf(stderr, "\t-L | --set-label=label                Set volume label\n");
+	fprintf(stderr, "\t-i | --print-serial                   Print volume serial\n");
+	fprintf(stderr, "\t-L | --set-serial=value               Set volume serial\n");
 	fprintf(stderr, "\t-V | --version                        Show version\n");
 	fprintf(stderr, "\t-v | --verbose                        Print debug\n");
 	fprintf(stderr, "\t-h | --help                           Show help\n");
@@ -29,15 +31,14 @@ static void usage(void)
 static struct option opts[] = {
 	{"print-label",		no_argument,		NULL,	'l' },
 	{"set-label",		required_argument,	NULL,	'L' },
+	{"print-serial",	no_argument,		NULL,	'i' },
+	{"set-serial",		required_argument,	NULL,	'I' },
 	{"version",		no_argument,		NULL,	'V' },
 	{"verbose",		no_argument,		NULL,	'v' },
 	{"help",		no_argument,		NULL,	'h' },
 	{"?",			no_argument,		NULL,	'?' },
 	{NULL,			0,			NULL,	 0  }
 };
-
-#define EXFAT_GET_LABEL	0x1
-#define EXFAT_SET_LABEL	0x2
 
 int main(int argc, char *argv[])
 {
@@ -56,15 +57,22 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "L:lVvh", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "I:iL:lVvh", opts, NULL)) != EOF)
 		switch (c) {
 		case 'l':
-			flags = EXFAT_GET_LABEL;
+			flags = EXFAT_GET_VOLUME_LABEL;
 			break;
 		case 'L':
 			snprintf(label_input, sizeof(label_input), "%s",
 					optarg);
-			flags = EXFAT_SET_LABEL;
+			flags = EXFAT_SET_VOLUME_LABEL;
+			break;
+		case 'i':
+			flags = EXFAT_GET_VOLUME_SERIAL;
+			break;
+		case 'I':
+			ui.volume_serial = strtoul(optarg, NULL, 0);
+			flags = EXFAT_SET_VOLUME_SERIAL;
 			break;
 		case 'V':
 			version_only = true;
@@ -92,13 +100,22 @@ int main(int argc, char *argv[])
 	if (ret < 0)
 		goto out;
 
+	/* Mode to change or display volume serial */
+	if (flags == EXFAT_GET_VOLUME_SERIAL) {
+		ret = exfat_show_volume_serial(&bd, &ui);
+		goto out;
+	} else if (flags == EXFAT_SET_VOLUME_SERIAL) {
+		ret = exfat_change_volume_serial(&bd, &ui);
+		goto out;
+	}
+
 	root_clu_off = exfat_get_root_entry_offset(&bd);
 	if (root_clu_off < 0)
 		goto out;
 
-	if (flags == EXFAT_GET_LABEL)
+	if (flags == EXFAT_GET_VOLUME_LABEL)
 		ret = exfat_get_volume_label(&bd, root_clu_off);
-	else if (flags == EXFAT_SET_LABEL)
+	else if (flags == EXFAT_SET_VOLUME_LABEL)
 		ret = exfat_set_volume_label(&bd, label_input, root_clu_off);
 
 out:

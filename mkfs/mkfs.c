@@ -88,26 +88,11 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 		le32_to_cpu(pbsx->clu_count));
 	exfat_debug("Root Cluster (cluster offset) : %u\n",
 		le32_to_cpu(pbsx->root_cluster));
+	exfat_debug("Volume Serial : 0x%x\n", le32_to_cpu(pbsx->vol_serial));
 	exfat_debug("Sector Size Bits : %u\n",
 		pbsx->sect_size_bits);
 	exfat_debug("Sector per Cluster bits : %u\n",
 		pbsx->sect_per_clus_bits);
-}
-
-static int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
-		unsigned int sec_off)
-{
-	int bytes;
-	unsigned long long offset = sec_off * bd->sector_size;
-
-	lseek(bd->dev_fd, offset, SEEK_SET);
-	bytes = write(bd->dev_fd, buf, bd->sector_size);
-	if (bytes != (int)bd->sector_size) {
-		exfat_err("write failed, sec_off : %u, bytes : %d\n", sec_off,
-			bytes);
-		return -1;
-	}
-	return 0;
 }
 
 static int exfat_write_boot_sector(struct exfat_blk_dev *bd,
@@ -210,35 +195,6 @@ static int exfat_write_oem_sector(struct exfat_blk_dev *bd,
 
 free_oem:
 	free(oem);
-	return ret;
-}
-
-static int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
-		unsigned int checksum, bool is_backup)
-{
-	__le32 *checksum_buf;
-	int ret = 0;
-	unsigned int i;
-	unsigned int sec_idx = CHECKSUM_SEC_IDX;
-
-	checksum_buf = malloc(bd->sector_size);
-	if (!checksum_buf)
-		return -1;
-
-	if (is_backup)
-		sec_idx += BACKUP_BOOT_SEC_IDX;
-
-	for (i = 0; i < bd->sector_size / sizeof(int); i++)
-		checksum_buf[i] = cpu_to_le32(checksum);
-
-	ret = exfat_write_sector(bd, checksum_buf, sec_idx);
-	if (ret) {
-		exfat_err("checksum sector write failed\n");
-		goto free;
-	}
-
-free:
-	free(checksum_buf);
 	return ret;
 }
 

@@ -63,15 +63,24 @@ Usage example:
         tune.exfat -l /dev/sda1
     2. set new volume label.
         tune.exfat -L "new label" /dev/sda1
+    3. print current volume serial.
+        tune.exfat -i /dev/sda1
+    4. set new volume serial.
+        tune.exfat -I "new serial" /dev/sda1
 
 - exfatlabel:
-    Get or Set volume label
+    Get or Set volume label or serial
 
 Usage example:
     1. get current volume label.
         exfatlabel /dev/sda1
     2. set new volume label.
-        exfatlabel "new label" /dev/sda1
+        exfatlabel /dev/sda1 "new label"
+    3. get current volume serial.
+        exfatlabel -i /dev/sda1
+    4. set new volume serial.
+        exfatlabel -i /dev/sda1 "new serial"
+
 ```
 
 ## Benchmarks

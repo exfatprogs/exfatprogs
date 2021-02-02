@@ -1,14 +1,17 @@
 .TH exfatlabel 8
 .SH NAME
-exfatlabel \- Get or Set volume label of an exFAT filesystem
+exfatlabel \- Get or Set volume label or volume serial of an exFAT filesystem
 .SH SYNOPSIS
 .B exfatlabel
 [
+.B \-i
+.I volume-label
+] [
 .B \-v
 ]
 .I device
 [
-.I label_string
+.I label_string or serial_value
 ]
 .br
 .B exfatlabel \-V
@@ -20,9 +23,14 @@ If there is a
 .I label_string
 in argument of exfatlabel, It will be written to volume label
 field on given device. If not, exfatlabel will just print out
-after reading volume label field from given device.
+after reading volume label field from given device. If -i or
+--volume-serial is given, It can be switched to volume serial
+mode.
 .PP
 .SH OPTIONS
+.TP
+.BI \-i
+Switch to volume serial mode.
 .TP
 .B \-V
 Prints the version number and exits.

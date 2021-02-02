@@ -419,3 +419,188 @@ int exfat_set_volume_label(struct exfat_blk_dev *bd,
 	exfat_info("new label: %s\n", label_input);
 	return 0;
 }
+
+int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned int sec_off)
+{
+	int ret;
+	unsigned long long offset = sec_off * bd->sector_size;
+
+	lseek(bd->dev_fd, offset, SEEK_SET);
+	ret = read(bd->dev_fd, buf, bd->sector_size);
+	if (ret < 0) {
+		exfat_err("read failed, sec_off : %u\n", sec_off);
+		return -1;
+	}
+	return 0;
+}
+
+int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
+		unsigned int sec_off)
+{
+	int bytes;
+	unsigned long long offset = sec_off * bd->sector_size;
+
+	lseek(bd->dev_fd, offset, SEEK_SET);
+	bytes = write(bd->dev_fd, buf, bd->sector_size);
+	if (bytes != (int)bd->sector_size) {
+		exfat_err("write failed, sec_off : %u, bytes : %d\n", sec_off,
+			bytes);
+		return -1;
+	}
+	return 0;
+}
+
+int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
+		unsigned int checksum, bool is_backup)
+{
+	__le32 *checksum_buf;
+	int ret = 0;
+	unsigned int i;
+	unsigned int sec_idx = CHECKSUM_SEC_IDX;
+
+	checksum_buf = malloc(bd->sector_size);
+	if (!checksum_buf)
+		return -1;
+
+	if (is_backup)
+		sec_idx += BACKUP_BOOT_SEC_IDX;
+
+	for (i = 0; i < bd->sector_size / sizeof(int); i++)
+		checksum_buf[i] = cpu_to_le32(checksum);
+
+	ret = exfat_write_sector(bd, checksum_buf, sec_idx);
+	if (ret) {
+		exfat_err("checksum sector write failed\n");
+		goto free;
+	}
+
+free:
+	free(checksum_buf);
+	return ret;
+}
+
+int exfat_show_volume_serial(struct exfat_blk_dev *bd,
+		struct exfat_user_input *ui)
+{
+	struct pbr *ppbr;
+	int ret;
+
+	ppbr = malloc(bd->sector_size);
+	if (!ppbr) {
+		exfat_err("Cannot allocate pbr: out of memory\n");
+		return -1;
+	}
+
+	/* read main boot sector */
+	ret = exfat_read_sector(bd, (char *)ppbr, BOOT_SEC_IDX);
+	if (ret < 0) {
+		exfat_err("main boot sector read failed\n");
+		ret = -1;
+		goto free_ppbr;
+	}
+
+	exfat_info("volume serial : 0x%x\n", ppbr->bsx.vol_serial);
+
+free_ppbr:
+	free(ppbr);
+	return ret;
+}
+
+static int exfat_update_boot_checksum(struct exfat_blk_dev *bd, bool is_backup)
+{
+	unsigned int checksum = 0;
+	int ret, sec_idx, backup_sec_idx = 0;
+	int sector_size = bd->sector_size;
+	unsigned char *buf;
+
+	buf = malloc(bd->sector_size);
+	if (!buf) {
+		exfat_err("Cannot allocate pbr: out of memory\n");
+		return -1;
+	}
+
+	if (is_backup)
+		backup_sec_idx = BACKUP_BOOT_SEC_IDX;
+
+	for (sec_idx = BOOT_SEC_IDX; sec_idx < CHECKSUM_SEC_IDX; sec_idx++) {
+		bool is_boot_sec = false;
+
+		ret = exfat_read_sector(bd, buf, sec_idx + backup_sec_idx);
+		if (ret < 0) {
+			exfat_err("sector(%d) read failed\n", sec_idx);
+			ret = -1;
+			goto free_buf;
+		}
+
+		if (sec_idx == BOOT_SEC_IDX) {
+			is_boot_sec = true;
+			sector_size = sizeof(struct pbr);
+		} else if (sec_idx >= EXBOOT_SEC_IDX && sec_idx < OEM_SEC_IDX)
+			sector_size = sizeof(struct exbs);
+
+		boot_calc_checksum(buf, sector_size, is_boot_sec,
+			&checksum);
+	}
+
+	ret = exfat_write_checksum_sector(bd, checksum, is_backup);
+
+free_buf:
+	free(buf);
+
+	return ret;
+}
+
+int exfat_change_volume_serial(struct exfat_blk_dev *bd,
+		struct exfat_user_input *ui)
+{
+	int ret;
+	struct pbr *ppbr;
+
+	ppbr = malloc(bd->sector_size);
+	if (!ppbr) {
+		exfat_err("Cannot allocate pbr: out of memory\n");
+		return -1;
+	}
+
+	/* read main boot sector */
+	ret = exfat_read_sector(bd, (char *)ppbr, BOOT_SEC_IDX);
+	if (ret < 0) {
+		exfat_err("main boot sector read failed\n");
+		ret = -1;
+		goto free_ppbr;
+	}
+
+	ppbr->bsx.vol_serial = ui->volume_serial;
+
+	/* update main boot sector */
+	ret = exfat_write_sector(bd, (char *)ppbr, BOOT_SEC_IDX);
+	if (ret < 0) {
+		exfat_err("main boot sector write failed\n");
+		ret = -1;
+		goto free_ppbr;
+	}
+
+	/* update backup boot sector */
+	ret = exfat_write_sector(bd, (char *)ppbr, BACKUP_BOOT_SEC_IDX);
+	if (ret < 0) {
+		exfat_err("backup boot sector write failed\n");
+		ret = -1;
+		goto free_ppbr;
+	}
+
+	ret = exfat_update_boot_checksum(bd, 0);
+	if (ret < 0) {
+		exfat_err("main checksum update failed\n");
+		goto free_ppbr;
+	}
+
+	ret = exfat_update_boot_checksum(bd, 1);
+	if (ret < 0)
+		exfat_err("backup checksum update failed\n");
+free_ppbr:
+	free(ppbr);
+
+	exfat_info("New volume serial : 0x%x\n", ui->volume_serial);
+
+	return ret;
+}
