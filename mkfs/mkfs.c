@@ -426,6 +426,37 @@ static struct option opts[] = {
 	{NULL,			0,			NULL,	 0  }
 };
 
+/*
+ * Moves the bitmap to just before the alignment boundary if there is space
+ * between the boundary and the end of the FAT. This may allow the FAT and the
+ * bitmap to share the same allocation unit on flash media, thereby improving
+ * performance and endurance.
+ */
+static int exfat_pack_bitmap(const struct exfat_user_input *ui) {
+	unsigned int fat_byte_end = finfo.fat_byte_off + finfo.fat_byte_len,
+		bitmap_byte_len = finfo.bitmap_byte_len,
+		bitmap_clu_len = round_up(bitmap_byte_len, ui->cluster_size),
+		bitmap_clu_cnt, total_clu_cnt, new_bitmap_clu_len;
+	for (;;) {
+		bitmap_clu_cnt = bitmap_clu_len / ui->cluster_size;
+		if (finfo.clu_byte_off - bitmap_clu_len < fat_byte_end ||
+				finfo.total_clu_cnt > EXFAT_MAX_NUM_CLUSTER -
+					bitmap_clu_cnt)
+			return -1;
+		total_clu_cnt = finfo.total_clu_cnt + bitmap_clu_cnt;
+		bitmap_byte_len = round_up(total_clu_cnt, 8) / 8;
+		new_bitmap_clu_len = round_up(bitmap_byte_len, ui->cluster_size);
+		if (new_bitmap_clu_len == bitmap_clu_len) {
+			finfo.clu_byte_off -= bitmap_clu_len;
+			finfo.total_clu_cnt = total_clu_cnt;
+			finfo.bitmap_byte_off -= bitmap_clu_len;
+			finfo.bitmap_byte_len = bitmap_byte_len;
+			return 0;
+		}
+		bitmap_clu_len = new_bitmap_clu_len;
+	}
+}
+
 static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
@@ -455,6 +486,7 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
 
 	finfo.bitmap_byte_off = finfo.clu_byte_off;
 	finfo.bitmap_byte_len = round_up(finfo.total_clu_cnt, 8) / 8;
+	exfat_pack_bitmap(ui);
 	clu_len = round_up(finfo.bitmap_byte_len, ui->cluster_size);
 
 	finfo.ut_start_clu = EXFAT_FIRST_CLUSTER + clu_len / ui->cluster_size;
