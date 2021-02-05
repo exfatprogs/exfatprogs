@@ -84,7 +84,7 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 		le32_to_cpu(pbsx->fat_length));
 	exfat_debug("Cluster Heap Offset (sector offset) : %u\n",
 		le32_to_cpu(pbsx->clu_offset));
-	exfat_debug("Cluster Count (sectors) : %u\n",
+	exfat_debug("Cluster Count (clusters) : %u\n",
 		le32_to_cpu(pbsx->clu_count));
 	exfat_debug("Root Cluster (cluster offset) : %u\n",
 		le32_to_cpu(pbsx->root_cluster));
