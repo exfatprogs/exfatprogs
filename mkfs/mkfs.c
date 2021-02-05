@@ -53,7 +53,7 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 	memset(pbpb->res_zero, 0, 53);
 
 	/* Fill exfat extend BIOS paramemter block */
-	pbsx->vol_offset = 0;
+	pbsx->vol_offset = cpu_to_le64(bd->offset / bd->sector_size);
 	pbsx->vol_length = cpu_to_le64(bd->size / bd->sector_size);
 	pbsx->fat_offset = cpu_to_le32(finfo.fat_byte_off / bd->sector_size);
 	pbsx->fat_length = cpu_to_le32(finfo.fat_byte_len / bd->sector_size);
@@ -76,6 +76,8 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 	memset(ppbr->boot_code, 0, 390);
 	ppbr->signature = cpu_to_le16(PBR_SIGNATURE);
 
+	exfat_debug("Volume Offset(sectors) : %" PRIu64 "\n",
+		le64_to_cpu(pbsx->vol_offset));
 	exfat_debug("Volume Length(sectors) : %" PRIu64 "\n",
 		le64_to_cpu(pbsx->vol_length));
 	exfat_debug("FAT Offset(sector offset) : %u\n",
@@ -436,12 +438,12 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
 				bd->sector_size);
 		return -1;
 	}
-	finfo.fat_byte_off = round_up(24 * bd->sector_size,
-			ui->boundary_align);
+	finfo.fat_byte_off = round_up(bd->offset + 24 * bd->sector_size,
+			ui->boundary_align) - bd->offset;
 	finfo.fat_byte_len = round_up((bd->num_clusters * sizeof(int)),
 		ui->cluster_size);
-	finfo.clu_byte_off = round_up(finfo.fat_byte_off + finfo.fat_byte_len,
-		ui->boundary_align);
+	finfo.clu_byte_off = round_up(bd->offset + finfo.fat_byte_off +
+		finfo.fat_byte_len, ui->boundary_align) - bd->offset;
 	if (bd->size <= finfo.clu_byte_off) {
 		exfat_err("boundary alignment is too big\n");
 		return -1;

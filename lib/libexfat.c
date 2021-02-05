@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <sys/sysmacros.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <stdlib.h>
@@ -144,6 +145,8 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 {
 	int fd, ret = -1;
 	off_t blk_dev_size;
+	struct stat st;
+	unsigned long long blk_dev_offset = 0;
 
 	fd = open(ui->dev_name, ui->writeable ? O_RDWR|O_EXCL : O_RDONLY);
 	if (fd < 0) {
@@ -160,7 +163,24 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		goto out;
 	}
 
+	if (fstat(fd, &st) == 0 && S_ISBLK(st.st_mode)) {
+		char pathname[43];
+		FILE *fp;
+		snprintf(pathname, sizeof pathname, "/sys/dev/block/%u:%u/start",
+			major(st.st_rdev), minor(st.st_rdev));
+		if ((fp = fopen(pathname, "r")) != NULL) {
+			if (fscanf(fp, "%llu", &blk_dev_offset) == 1)
+				/*
+				 * Linux kernel always reports partition offset
+				 * in 512-byte units, regardless of sector size
+				 */
+				blk_dev_offset <<= 9;
+			fclose(fp);
+		}
+	}
+
 	bd->dev_fd = fd;
+	bd->offset = blk_dev_offset;
 	bd->size = blk_dev_size;
 	if (!ui->cluster_size)
 		exfat_set_default_cluster_size(bd, ui);
@@ -175,7 +195,8 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 	bd->num_clusters = blk_dev_size / ui->cluster_size;
 
 	exfat_debug("Block device name : %s\n", ui->dev_name);
-	exfat_debug("Block device size : %lld\n", bd->size);
+	exfat_debug("Block device offset : %llu\n", bd->offset);
+	exfat_debug("Block device size : %llu\n", bd->size);
 	exfat_debug("Block sector size : %u\n", bd->sector_size);
 	exfat_debug("Number of the sectors : %llu\n",
 		bd->num_sectors);
