@@ -429,6 +429,7 @@ static struct option opts[] = {
 static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
+	unsigned long long total_clu_cnt;
 	int clu_len;
 
 	if (ui->boundary_align < bd->sector_size) {
@@ -446,12 +447,12 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
 		exfat_err("boundary alignment is too big\n");
 		return -1;
 	}
-	finfo.total_clu_cnt = (bd->size - finfo.clu_byte_off) /
-		ui->cluster_size;
-	if (finfo.total_clu_cnt > EXFAT_MAX_NUM_CLUSTER) {
+	total_clu_cnt = (bd->size - finfo.clu_byte_off) / ui->cluster_size;
+	if (total_clu_cnt > EXFAT_MAX_NUM_CLUSTER) {
 		exfat_err("cluster size is too small\n");
 		return -1;
 	}
+	finfo.total_clu_cnt = (unsigned int) total_clu_cnt;
 
 	finfo.bitmap_byte_off = finfo.clu_byte_off;
 	finfo.bitmap_byte_len = round_up(finfo.total_clu_cnt, 8) / 8;
