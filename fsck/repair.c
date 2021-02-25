@@ -62,29 +62,31 @@ static bool ask_repair(struct exfat *exfat, struct exfat_repair_problem *pr)
 	bool repair = false;
 	char answer[8];
 
-	if (exfat->options & FSCK_OPTS_REPAIR_NO ||
-			pr->flags & ERF_DEFAULT_NO)
+	if (exfat->options & FSCK_OPTS_REPAIR_NO)
 		repair = false;
-	else if (exfat->options & FSCK_OPTS_REPAIR_YES ||
-			pr->flags & ERF_DEFAULT_YES)
+	else if (exfat->options & FSCK_OPTS_REPAIR_YES)
+		repair = true;
+	else if (exfat->options & FSCK_OPTS_REPAIR_ASK) {
+		do {
+			printf(". %s (y/N)? ",
+				prompts[pr->prompt_type]);
+			fflush(stdout);
+
+			if (fgets(answer, sizeof(answer), stdin)) {
+				if (strcasecmp(answer, "Y\n") == 0)
+					return true;
+				else if (strcasecmp(answer, "\n") == 0
+					|| strcasecmp(answer, "N\n") == 0)
+					return false;
+			}
+		} while (1);
+	} else if (exfat->options & FSCK_OPTS_REPAIR_AUTO &&
+			pr->flags & ERF_PREEN_YES)
 		repair = true;
 	else {
-		if (exfat->options & FSCK_OPTS_REPAIR_ASK) {
-			do {
-				printf(". %s (y/N)? ",
-					prompts[pr->prompt_type]);
-				fflush(stdout);
-
-				if (fgets(answer, sizeof(answer), stdin)) {
-					if (strcasecmp(answer, "Y\n") == 0)
-						return true;
-					else if (strcasecmp(answer, "\n") == 0
-						|| strcasecmp(answer, "N\n") == 0)
-						return false;
-				}
-			} while (1);
-		} else if (exfat->options & FSCK_OPTS_REPAIR_AUTO &&
-				pr->flags & ERF_PREEN_YES)
+		if (pr->flags & ERF_DEFAULT_NO)
+			repair = false;
+		else if (pr->flags & ERF_DEFAULT_YES)
 			repair = true;
 	}
 
