@@ -21,17 +21,17 @@
 #include "version.h"
 
 #ifdef WORDS_BIGENDIAN
-#define BITOP_LE_SWIZZLE	(~0x7)
+#define BITOP_LE_SWIZZLE	((__BITS_PER_LONG - 1) & ~0x7)
 #else
 #define BITOP_LE_SWIZZLE        0
 #endif
 
-#define BIT_MASK(nr)            ((1) << ((nr) % 32))
-#define BIT_WORD(nr)            ((nr) / 32)
+#define BIT_MASK(nr)            (1UL << ((nr) % __BITS_PER_LONG))
+#define BIT_WORD(nr)            ((nr) / __BITS_PER_LONG)
 
 unsigned int print_level  = EXFAT_INFO;
 
-static inline void set_bit(int nr, unsigned int *addr)
+static inline void set_bit(int nr, void *addr)
 {
 	unsigned long mask = BIT_MASK(nr);
 	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
@@ -39,7 +39,7 @@ static inline void set_bit(int nr, unsigned int *addr)
 	*p  |= mask;
 }
 
-static inline void clear_bit(int nr, unsigned int *addr)
+static inline void clear_bit(int nr, void *addr)
 {
 	unsigned long mask = BIT_MASK(nr);
 	unsigned long *p = ((unsigned long *)addr) + BIT_WORD(nr);
