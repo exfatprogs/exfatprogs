@@ -64,26 +64,34 @@ static unsigned int exfat_count_used_clusters(unsigned char *bitmap,
 	return count;
 }
 
+
+static off_t c2o(off_t heap_offset, unsigned int clu, unsigned int clu_size)
+{
+	return heap_offset + (clu - EXFAT_FIRST_CLUSTER) * clu_size;
+}
+
 static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 {
 	struct pbr *ppbr;
 	struct bsx64 *pbsx;
 	struct exfat_dentry *ed;
+	unsigned int sect_size, clu_size;
 	unsigned int root_clu_off, bitmap_clu_off, bitmap_clu;
-	unsigned int total_clus, used_clus, clu_offset, root_clu;
+	unsigned int total_clus, used_clus, root_clu;
+	off_t heap_offset;
 	unsigned long long bitmap_len;
 	int ret;
 	unsigned char *bitmap;
 	char *volume_label;
 
-	ppbr = malloc(bd->sector_size);
+	ppbr = malloc(sizeof(*ppbr));
 	if (!ppbr) {
 		exfat_err("Cannot allocate pbr: out of memory\n");
 		return -ENOMEM;
 	}
 
 	/* read main boot sector */
-	ret = exfat_read_sector(bd, (char *)ppbr, BOOT_SEC_IDX);
+	ret = exfat_read(bd->dev_fd, ppbr, sizeof(*ppbr), 0);
 	if (ret < 0) {
 		exfat_err("main boot sector read failed\n");
 		ret = -EIO;
@@ -107,14 +115,9 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 		goto free_ppbr;
 	}
 
-	if (bd->sector_size != 1 << pbsx->sect_size_bits) {
-		exfat_err("bogus sector size : %u (sector size bits : %u)\n",
-				bd->sector_size, pbsx->sect_size_bits);
-		ret = -EINVAL;
-		goto free_ppbr;
-	}
+	sect_size = 1 << pbsx->sect_size_bits;
+	clu_size = 1 << (pbsx->sect_per_clus_bits + pbsx->sect_size_bits);
 
-	clu_offset = le32_to_cpu(pbsx->clu_offset);
 	total_clus = le32_to_cpu(pbsx->clu_count);
 	root_clu = le32_to_cpu(pbsx->root_cluster);
 
@@ -125,16 +128,16 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 			le32_to_cpu(pbsx->fat_offset));
 	exfat_info("FAT Length(sectors): \t\t\t%u\n",
 			le32_to_cpu(pbsx->fat_length));
-	exfat_info("Cluster Heap Offset (sector offset): \t%u\n", clu_offset);
+	exfat_info("Cluster Heap Offset (sector offset): \t%u\n",
+			le32_to_cpu(pbsx->clu_offset));
 	exfat_info("Cluster Count: \t\t\t\t%u\n", total_clus);
 	exfat_info("Root Cluster (cluster offset): \t\t%u\n", root_clu);
 	exfat_info("Volume Serial: \t\t\t\t0x%x\n", le32_to_cpu(pbsx->vol_serial));
 	exfat_info("Sector Size Bits: \t\t\t%u\n", pbsx->sect_size_bits);
 	exfat_info("Sector per Cluster bits: \t\t%u\n\n", pbsx->sect_per_clus_bits);
 
-	bd->cluster_size =
-		1 << (pbsx->sect_per_clus_bits + pbsx->sect_size_bits);
-	root_clu_off = exfat_clus_to_blk_dev_off(bd, clu_offset, root_clu);
+	heap_offset = le32_to_cpu(pbsx->clu_offset) * sect_size;
+	root_clu_off = c2o(heap_offset, root_clu, clu_size);
 
 	ed = malloc(sizeof(struct exfat_dentry)*3);
 	if (!ed) {
@@ -158,8 +161,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 	}
 
 	bitmap_clu = le32_to_cpu(ed[1].bitmap_start_clu);
-	bitmap_clu_off = exfat_clus_to_blk_dev_off(bd, clu_offset,
-			bitmap_clu);
+	bitmap_clu_off = c2o(heap_offset, bitmap_clu, clu_size);
 	bitmap_len = le64_to_cpu(ed[1].bitmap_size);
 
 	exfat_info("----------------- Dump Root entries -----------------\n");
@@ -196,7 +198,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 	used_clus = exfat_count_used_clusters(bitmap, bitmap_len);
 
 	exfat_info("---------------- Show the statistics ----------------\n");
-	exfat_info("Cluster size:  \t\t\t\t%u\n", bd->cluster_size);
+	exfat_info("Cluster size:  \t\t\t\t%u\n", clu_size);
 	exfat_info("Total Clusters: \t\t\t%u\n", total_clus);
 	exfat_info("Free Clusters: \t\t\t\t%u\n", total_clus-used_clus);
 	ret = 0;

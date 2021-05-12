@@ -649,10 +649,3 @@ free_ppbr:
 
 	return ret;
 }
-
-unsigned int exfat_clus_to_blk_dev_off(struct exfat_blk_dev *bd,
-		unsigned int clu_off_sectnr, unsigned int clu)
-{
-	return clu_off_sectnr * bd->sector_size +
-		(clu - EXFAT_RESERVED_CLUSTERS) * bd->cluster_size;
-}

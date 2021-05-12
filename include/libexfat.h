@@ -111,9 +111,6 @@ int exfat_show_volume_serial(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui);
 int exfat_set_volume_serial(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui);
-unsigned int exfat_clus_to_blk_dev_off(struct exfat_blk_dev *bd,
-		unsigned int clu_off, unsigned int clu);
-
 
 /*
  * Exfat Print
