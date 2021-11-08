@@ -1601,9 +1601,10 @@ int main(int argc, char * const argv[])
 		goto err;
 
 	ret = init_exfat(exfat, bs);
-	if (ret)
+	if (ret) {
+		exfat = NULL;
 		goto err;
-
+	}
 	if (exfat_mark_volume_dirty(exfat, true)) {
 		ret = -EIO;
 		goto err;
