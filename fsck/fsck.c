@@ -1477,6 +1477,11 @@ static char *bytes_to_human_readable(size_t bytes)
 		shift += 10;
 	}
 
+	if(i > =  sizeof(units)/sizeof(units[0])) {
+		i = i - 1;
+		shift = shift - 10;
+	}
+
 	quoti = (unsigned int)(bytes / (1ULL << shift));
 	remain = 0;
 	if (shift > 0) {
