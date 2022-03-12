@@ -133,8 +133,13 @@ extern unsigned int print_level;
 		}							\
 	} while (0)							\
 
+#ifdef __ANDROID__
+#define exfat_err(fmt, ...)	exfat_msg(EXFAT_ERROR, stdout,		\
+					fmt, ##__VA_ARGS__)
+#else
 #define exfat_err(fmt, ...)	exfat_msg(EXFAT_ERROR, stderr,		\
 					fmt, ##__VA_ARGS__)
+#endif
 #define exfat_info(fmt, ...)	exfat_msg(EXFAT_INFO, stdout,		\
 					fmt, ##__VA_ARGS__)
 #define exfat_debug(fmt, ...)	exfat_msg(EXFAT_DEBUG, stdout,		\
