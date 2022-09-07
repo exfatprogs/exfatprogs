@@ -337,7 +337,7 @@ static int exfat_create_bitmap(struct exfat_blk_dev *bd)
 static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
-	struct exfat_dentry ed[3];
+	struct exfat_dentry ed[3] = {0};
 	int dentries_len = sizeof(struct exfat_dentry) * 3;
 	int nbytes;
 
