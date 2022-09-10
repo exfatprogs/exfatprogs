@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- *   Copyright (C) 2022 Hyunchul Lee <hyc.lee@gmail.com>
+ *   Copyright (C) 2021 LG Electronics.
+ *
+ *   Author(s): Hyunchul Lee <hyc.lee@gmail.com>
  */
 
 #include <stdlib.h>
