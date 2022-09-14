@@ -19,13 +19,18 @@ dump metadata of exFAT filesystems for debugging. \fBexfat2img\fP dump boot sect
 .TP
 .BI \-o\ \-\-output
 Specify output result file. If filesystem to which output file is written does not support sparse file, you should use '-' in place of \fIpath\fP.
-When restoring a partition from a dump image generated from stdout, exfat2img should be used. See Examples.
+Because a dump image generated from stdout has a special format, when restoring a partition from it, exfat2img should be used. See Examples.
 .TP
 .B \-V
 Prints the version number and exits.
 
 .SH EXAMPLES
 .PP
+Dump metadata into a sparse file.
+.EX
+.RB "$" " exfat2img -o sda1.dump /dev/sda1
+
+Dump metadata into standard out and restore a partition
 .EX
 .RB "$" " exfat2img -o - /dev/sda1 | bzip2 > sda1.dump.bz2"
 .RB "$" " bzip2 -dc sda1.dump.bz2 | exfat2img -o /dev/sdb1 -"
