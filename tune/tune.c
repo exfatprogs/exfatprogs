@@ -13,6 +13,7 @@
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
+#include "exfat_fs.h"
 
 static void usage(void)
 {
@@ -49,7 +50,8 @@ int main(int argc, char *argv[])
 	bool version_only = false;
 	int flags = 0;
 	char label_input[VOLUME_LABEL_BUFFER_SIZE];
-	off_t root_clu_off;
+	struct exfat *exfat = NULL;
+	struct pbr *bs;
 
 	init_user_input(&ui);
 
@@ -109,16 +111,39 @@ int main(int argc, char *argv[])
 		goto close_fd_out;
 	}
 
-	root_clu_off = exfat_get_root_entry_offset(&bd);
-	if (root_clu_off < 0)
+	ret = read_boot_sect(&bd, &bs);
+	if (ret)
 		goto close_fd_out;
 
+	exfat = exfat_alloc_exfat(&bd, bs);
+	if (!exfat) {
+		free(bs);
+		ret = -ENOMEM;
+		goto close_fd_out;
+	}
+
+	exfat->root = exfat_alloc_inode(ATTR_SUBDIR);
+	if (!exfat->root) {
+		ret = -ENOMEM;
+		goto close_fd_out;
+	}
+
+	exfat->root->first_clus = le32_to_cpu(exfat->bs->bsx.root_cluster);
+	if (exfat_root_clus_count(exfat)) {
+		exfat_err("failed to follow the cluster chain of root\n");
+		exfat_free_inode(exfat->root);
+		ret = -EINVAL;
+		goto close_fd_out;
+	}
+
 	if (flags == EXFAT_GET_VOLUME_LABEL)
-		ret = exfat_show_volume_label(&bd, root_clu_off);
+		ret = exfat_read_volume_label(exfat);
 	else if (flags == EXFAT_SET_VOLUME_LABEL)
-		ret = exfat_set_volume_label(&bd, label_input, root_clu_off);
+		ret = exfat_set_volume_label(exfat, label_input);
 close_fd_out:
 	close(bd.dev_fd);
+	if (exfat)
+		exfat_free_exfat(exfat);
 out:
 	return ret;
 }

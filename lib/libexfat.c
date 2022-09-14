@@ -20,6 +20,7 @@
 #include "libexfat.h"
 #include "version.h"
 #include "exfat_fs.h"
+#include "exfat_dir.h"
 
 unsigned int print_level  = EXFAT_INFO;
 
@@ -403,74 +404,91 @@ char *exfat_conv_volume_label(struct exfat_dentry *vol_entry)
 	return volume_label;
 }
 
-int exfat_show_volume_label(struct exfat_blk_dev *bd, off_t root_clu_off)
+int exfat_read_volume_label(struct exfat *exfat)
 {
-	struct exfat_dentry *vol_entry;
-	char *volume_label;
-	int nbytes;
+	struct exfat_dentry *dentry;
+	int err;
+	__le16 disk_label[VOLUME_LABEL_MAX_LEN];
+	struct exfat_lookup_filter filter = {
+		.in.type = EXFAT_VOLUME,
+		.in.filter = NULL,
+	};
 
-	vol_entry = malloc(sizeof(struct exfat_dentry));
-	if (!vol_entry) {
-		exfat_err("failed to allocate memory\n");
-		return -ENOMEM;
+	err = exfat_lookup_dentry_set(exfat, exfat->root, &filter);
+	if (err)
+		return err;
+
+	dentry = filter.out.dentry_set;
+
+	if (dentry->vol_char_cnt == 0)
+		goto out;
+
+	if (dentry->vol_char_cnt > VOLUME_LABEL_MAX_LEN) {
+		exfat_err("too long label. %d\n", dentry->vol_char_cnt);
+		err = -EINVAL;
+		goto out;
 	}
 
-	nbytes = exfat_read(bd->dev_fd, vol_entry,
-		sizeof(struct exfat_dentry), root_clu_off);
-	if (nbytes != sizeof(struct exfat_dentry)) {
-		exfat_err("volume entry read failed: %d\n", errno);
-		free(vol_entry);
-		return -1;
+	memcpy(disk_label, dentry->vol_label, sizeof(disk_label));
+	if (exfat_utf16_dec(disk_label, dentry->vol_char_cnt*2,
+		exfat->volume_label, sizeof(exfat->volume_label)) < 0) {
+		exfat_err("failed to decode volume label\n");
+		err = -EINVAL;
+		goto out;
 	}
 
-	volume_label = exfat_conv_volume_label(vol_entry);
-	if (!volume_label) {
-		free(vol_entry);
-		return -EINVAL;
-	}
-
-	exfat_info("label: %s\n", volume_label);
-
-	free(volume_label);
-	free(vol_entry);
-	return 0;
+	exfat_info("label: %s\n", exfat->volume_label);
+out:
+	free(filter.out.dentry_set);
+	return err;
 }
 
-int exfat_set_volume_label(struct exfat_blk_dev *bd,
-		char *label_input, off_t root_clu_off)
+int exfat_set_volume_label(struct exfat *exfat, char *label_input)
 {
-	struct exfat_dentry vol;
-	int nbytes;
+	struct exfat_dentry *pvol;
+	struct exfat_dentry_loc loc;
 	__u16 volume_label[VOLUME_LABEL_MAX_LEN];
-	int volume_label_len;
+	int volume_label_len, dcount, err;
+
+	struct exfat_lookup_filter filter = {
+		.in.type = EXFAT_VOLUME,
+		.in.filter = NULL,
+	};
+
+	err = exfat_lookup_dentry_set(exfat, exfat->root, &filter);
+	if (!err) {
+		pvol = filter.out.dentry_set;
+		dcount = filter.out.dentry_count;
+		memset(pvol->vol_label, 0, sizeof(pvol->vol_label));
+	} else {
+		pvol = calloc(sizeof(struct exfat_dentry), 1);
+		if (!pvol)
+			return -ENOMEM;
+
+		dcount = 1;
+		pvol->type = EXFAT_VOLUME;
+	}
 
 	volume_label_len = exfat_utf16_enc(label_input,
 			volume_label, sizeof(volume_label));
 	if (volume_label_len < 0) {
 		exfat_err("failed to encode volume label\n");
+		free(pvol);
 		return -1;
 	}
 
-	vol.type = EXFAT_VOLUME;
-	memset(vol.vol_label, 0, sizeof(vol.vol_label));
-	memcpy(vol.vol_label, volume_label, volume_label_len);
-	vol.vol_char_cnt = volume_label_len/2;
+	memcpy(pvol->vol_label, volume_label, volume_label_len);
+	pvol->vol_char_cnt = volume_label_len/2;
 
-	nbytes = exfat_write(bd->dev_fd, &vol, sizeof(struct exfat_dentry),
-			root_clu_off);
-	if (nbytes != sizeof(struct exfat_dentry)) {
-		exfat_err("volume entry write failed: %d\n", errno);
-		return -1;
-	}
-
-	if (fsync(bd->dev_fd) == -1) {
-		exfat_err("failed to sync volume entry: %d, %s\n", errno,
-			  strerror(errno));
-		return -1;
-	}
-
+	loc.parent = exfat->root;
+	loc.file_offset = filter.out.file_offset;
+	loc.dev_offset = filter.out.dev_offset;
+	err = exfat_add_dentry_set(exfat, &loc, pvol, dcount, false);
 	exfat_info("new label: %s\n", label_input);
-	return 0;
+
+	free(pvol);
+
+	return err;
 }
 
 int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned int sec_off)
@@ -759,4 +777,80 @@ bool exfat_heap_clus(struct exfat *exfat, clus_t clus)
 {
 	return clus >= EXFAT_FIRST_CLUSTER &&
 		(clus - EXFAT_FIRST_CLUSTER) < exfat->clus_count;
+}
+
+int exfat_root_clus_count(struct exfat *exfat)
+{
+	struct exfat_inode *node = exfat->root;
+	clus_t clus, next;
+	int clus_count = 0;
+
+	if (!exfat_heap_clus(exfat, node->first_clus))
+		return -EIO;
+
+	clus = node->first_clus;
+	do {
+		if (exfat_bitmap_get(exfat->alloc_bitmap, clus))
+			return -EINVAL;
+
+		exfat_bitmap_set(exfat->alloc_bitmap, clus);
+
+		if (exfat_get_inode_next_clus(exfat, node, clus, &next)) {
+			exfat_err("ERROR: failed to read the fat entry of root");
+			return -EIO;
+		}
+
+		if (next != EXFAT_EOF_CLUSTER && !exfat_heap_clus(exfat, next))
+			return -EINVAL;
+
+		clus = next;
+		clus_count++;
+	} while (clus != EXFAT_EOF_CLUSTER);
+
+	node->size = clus_count * exfat->clus_size;
+	return 0;
+}
+
+int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs)
+{
+	struct pbr *pbr;
+	int err = 0;
+	unsigned int sect_size, clu_size;
+
+	pbr = malloc(sizeof(struct pbr));
+
+	if (exfat_read(bdev->dev_fd, pbr, sizeof(*pbr), 0) !=
+	    (ssize_t)sizeof(*pbr)) {
+		exfat_err("failed to read a boot sector\n");
+		err = -EIO;
+		goto err;
+	}
+
+	err = -EINVAL;
+	if (memcmp(pbr->bpb.oem_name, "EXFAT   ", 8) != 0) {
+		exfat_err("failed to find exfat file system\n");
+		goto err;
+	}
+
+	sect_size = 1 << pbr->bsx.sect_size_bits;
+	clu_size = 1 << (pbr->bsx.sect_size_bits +
+			 pbr->bsx.sect_per_clus_bits);
+
+	if (sect_size < 512 || sect_size > 4 * KB) {
+		exfat_err("too small or big sector size: %d\n",
+			  sect_size);
+		goto err;
+	}
+
+	if (clu_size < sect_size || clu_size > 32 * MB) {
+		exfat_err("too small or big cluster size: %d\n",
+			  clu_size);
+		goto err;
+	}
+
+	*bs = pbr;
+	return 0;
+err:
+	free(pbr);
+	return err;
 }

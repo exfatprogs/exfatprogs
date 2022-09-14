@@ -145,9 +145,8 @@ ssize_t exfat_utf16_enc(const char *in_str, __u16 *out_str, size_t out_size);
 ssize_t exfat_utf16_dec(const __u16 *in_str, size_t in_len,
 			char *out_str, size_t out_size);
 off_t exfat_get_root_entry_offset(struct exfat_blk_dev *bd);
-int exfat_show_volume_label(struct exfat_blk_dev *bd, off_t root_clu_off);
-int exfat_set_volume_label(struct exfat_blk_dev *bd,
-		char *label_input, off_t root_clu_off);
+int exfat_read_volume_label(struct exfat *exfat);
+int exfat_set_volume_label(struct exfat *exfat, char *label_input);
 int exfat_read_sector(struct exfat_blk_dev *bd, void *buf,
 		unsigned int sec_off);
 int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
@@ -169,6 +168,8 @@ off_t exfat_c2o(struct exfat *exfat, unsigned int clus);
 int exfat_o2c(struct exfat *exfat, off_t device_offset,
 	      unsigned int *clu, unsigned int *offset);
 bool exfat_heap_clus(struct exfat *exfat, clus_t clus);
+int exfat_root_clus_count(struct exfat *exfat);
+int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs);
 
 /*
  * Exfat Print

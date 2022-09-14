@@ -152,50 +152,6 @@ err:
 	return err;
 }
 
-static int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs)
-{
-	struct pbr *pbr;
-	int err = 0;
-	unsigned int sect_size, clu_size;
-
-	pbr = malloc(sizeof(struct pbr));
-
-	if (exfat_read(bdev->dev_fd, pbr, sizeof(*pbr), 0) !=
-	    (ssize_t)sizeof(*pbr)) {
-		exfat_err("failed to read a boot sector\n");
-		err = -EIO;
-		goto err;
-	}
-
-	err = -EINVAL;
-	if (memcmp(pbr->bpb.oem_name, "EXFAT   ", 8) != 0) {
-		exfat_err("failed to find exfat file system\n");
-		goto err;
-	}
-
-	sect_size = 1 << pbr->bsx.sect_size_bits;
-	clu_size = 1 << (pbr->bsx.sect_size_bits +
-			 pbr->bsx.sect_per_clus_bits);
-
-	if (sect_size < 512 || sect_size > 4 * KB) {
-		exfat_err("too small or big sector size: %d\n",
-			  sect_size);
-		goto err;
-	}
-
-	if (clu_size < sect_size || clu_size > 32 * MB) {
-		exfat_err("too small or big cluster size: %d\n",
-			  clu_size);
-		goto err;
-	}
-
-	*bs = pbr;
-	return 0;
-err:
-	free(pbr);
-	return err;
-}
-
 /**
  * @end: excluded.
  */
