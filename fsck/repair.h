@@ -15,6 +15,7 @@
 #define ER_DE_NAME			0x00001030
 #define ER_DE_NAME_HASH			0x00001031
 #define ER_DE_NAME_LEN			0x00001032
+#define ER_DE_DOT_NAME			0x00001033
 #define ER_FILE_VALID_SIZE		0x00002001
 #define ER_FILE_INVALID_CLUS		0x00002002
 #define ER_FILE_FIRST_CLUS		0x00002003
@@ -26,7 +27,7 @@
 typedef unsigned int er_problem_code_t;
 struct exfat_fsck;
 
-bool exfat_repair_ask(struct exfat_fsck *fsck, er_problem_code_t prcode,
-		      const char *fmt, ...);
+int exfat_repair_ask(struct exfat_fsck *fsck, er_problem_code_t prcode,
+		     const char *fmt, ...);
 
 #endif
