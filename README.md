@@ -94,11 +94,7 @@ Usage example:
     Dump metadata of an exFAT filesystem
 
 Usage example:
-    1. Dump metadata into a sparse file
-        exfat2img -o sda1.dump /dev/sda1
-    2. Dump metadata into standard out and restore a partition
-        exfat2img -o - /dev/sda1 | bzip2 > sda1.dump.bz2
-	bzip2 -dc sda1.dump.bz2 | exfat2img -o /dev/sdb1 -
+    exfat2img -o sda1.dump /dev/sda1
 
 ```
 
