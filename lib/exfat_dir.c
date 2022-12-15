@@ -677,7 +677,7 @@ int exfat_update_file_dentry_set(struct exfat *exfat,
 	return 0;
 }
 
-static int find_free_cluster(struct exfat *exfat,
+int find_free_cluster(struct exfat *exfat,
 			     clus_t start, clus_t *new_clu)
 {
 	clus_t end = le32_to_cpu(exfat->bs->bsx.clu_count) +

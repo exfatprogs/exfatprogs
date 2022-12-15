@@ -107,17 +107,28 @@ static int check_clus_chain(struct exfat_de_iter *de_iter,
 {
 	struct exfat *exfat = de_iter->exfat;
 	struct exfat_dentry *stream_de;
-	clus_t clus, prev, next;
+	clus_t clus, prev, next, new_clus;
 	uint64_t count, max_count;
+	int err;
 
 	clus = node->first_clus;
 	prev = EXFAT_EOF_CLUSTER;
 	count = 0;
 	max_count = DIV_ROUND_UP(node->size, exfat->clus_size);
 
-	if (node->size == 0 && node->first_clus == EXFAT_FREE_CLUSTER)
-		return 0;
-
+	if (node->size == 0 && node->first_clus == EXFAT_FREE_CLUSTER) {
+		/* locate a cluster for the empty dir if the dir starts with EXFAT_FREE_CLUSTER */
+		if(node->attr & ATTR_SUBDIR){
+			if (repair_file_ask(de_iter, node,
+				        ER_DIR_FIRST_CLUS,
+				        "size %#" PRIx64 ", but the first cluster %#x",
+				        node->size, node->first_clus))
+			    goto locate_cluster;
+			else
+			    return -EINVAL;
+		} else
+			return 0;
+	}
 	/* the first cluster is wrong */
 	if ((node->size == 0 && node->first_clus != EXFAT_FREE_CLUSTER) ||
 	    (node->size > 0 && !exfat_heap_clus(exfat, node->first_clus))) {
@@ -215,6 +226,39 @@ static int check_clus_chain(struct exfat_de_iter *de_iter,
 	}
 
 	return 0;
+locate_cluster:
+	node->size = count * exfat->clus_size;
+	exfat_de_iter_get_dirty(de_iter, 1, &stream_de);
+	err = find_free_cluster(exfat, exfat->start_clu, &new_clus);
+
+	if (err) {
+		exfat->start_clu = EXFAT_FIRST_CLUSTER;
+		exfat_err("failed to find a free cluster\n");
+		return -ENOSPC;
+	}
+	exfat->start_clu = new_clus;
+
+	if (exfat_set_fat(exfat, new_clus, EXFAT_EOF_CLUSTER))
+		return -EIO;
+
+	/* zero out the new cluster */
+	if (exfat_write(exfat->blk_dev->dev_fd, exfat->zero_cluster,
+			exfat->clus_size, exfat_c2o(exfat, new_clus)) !=
+	    (ssize_t)exfat->clus_size) {
+		exfat_err("failed to fill new cluster with zeroes\n");
+		return -EIO;
+	}
+	exfat_info("final cluster : %#x \n", new_clus);
+	count = 1;
+	stream_de->stream_start_clu = cpu_to_le64(new_clus);
+	stream_de->stream_size = cpu_to_le64(count * exfat->clus_size);
+	stream_de->stream_valid_size = cpu_to_le64(count * exfat->clus_size);
+	stream_de->dentry.stream.flags = 3;
+	node->first_clus = new_clus;
+	node->size = count * exfat->clus_size;
+	node->is_contiguous = true;
+	exfat_bitmap_set(exfat->alloc_bitmap, new_clus);
+	return 1;
 truncate_file:
 	node->size = count * exfat->clus_size;
 	if (!exfat_heap_clus(exfat, prev))
