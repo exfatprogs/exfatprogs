@@ -754,7 +754,7 @@ static ssize_t read_stream(int fd, void *buf, size_t len)
 		} else if (ret == 0) {
 			return 0;
 		}
-		buf += (size_t)ret;
+		buf = (char *)buf + (size_t)ret;
 		read_len += (size_t)ret;
 	}
 	return read_len;
