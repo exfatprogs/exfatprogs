@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <wchar.h>
 #include <limits.h>
+#include <assert.h>
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
@@ -748,8 +749,7 @@ off_t exfat_s2o(struct exfat *exfat, off_t sect)
 
 off_t exfat_c2o(struct exfat *exfat, unsigned int clus)
 {
-	if (clus < EXFAT_FIRST_CLUSTER)
-		return ~0L;
+	assert(clus >= EXFAT_FIRST_CLUSTER);
 
 	return exfat_s2o(exfat, le32_to_cpu(exfat->bs->bsx.clu_offset) +
 				((off_t)(clus - EXFAT_FIRST_CLUSTER) <<
