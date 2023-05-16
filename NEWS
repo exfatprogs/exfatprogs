@@ -1,3 +1,10 @@
+exfatprogs 1.2.1 - released 2023-05-16
+======================================
+
+CHANGES :
+ * fsck.exfat: Repair zero size directory.
+ * fsck.exfat: Three small clean-ups.
+
 exfatprogs 1.2.0 - released 2022-10-28
 ======================================
 
