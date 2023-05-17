@@ -35,10 +35,11 @@ static ssize_t write_block(struct exfat_de_iter *iter, unsigned int block)
 	unsigned int i;
 
 	desc = &iter->buffer_desc[block & 0x01];
-	device_offset = exfat_c2o(exfat, desc->p_clus) + desc->offset;
 
 	for (i = 0; i < iter->read_size / iter->write_size; i++) {
 		if (desc->dirty[i]) {
+			device_offset = exfat_c2o(exfat, desc->p_clus) +
+				desc->offset;
 			if (exfat_write(exfat->blk_dev->dev_fd,
 					desc->buffer + i * iter->write_size,
 					iter->write_size,
