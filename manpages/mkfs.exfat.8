@@ -67,12 +67,23 @@ _
 >128 GiB	\[<=]512 GiB	256 KiB	32 MiB
 >512 GiB	\[<=]2 TiB	512 KiB	64 MiB
 .TE
+The default is always 1 MiB.
 .TP
 .BR \-c ", " \-\-cluster\-size =\fIsize\fR
 Specifies the cluster size of the exFAT file system.
 The \fIsize\fR argument is specified in bytes or may be specified with
 \fBm\fR/\fBM\fR suffix for mebibytes or \fBk\fR/\fBK\fR suffix for kibibytes
 and must be a power of two.
+The default value is described in the following table:
+.TS
+center;
+cb1s6cb,nnn.
+Card Capacity Range	Cluster Size
+_
+	\[<=]256 MiB	4 KiB
+>256 MiB	\[<=]32 GiB	32 KiB
+>32 GiB		128 KiB
+.TE
 .TP
 .BR \-f ", " \-\-full\-format
 Performs a full format.
