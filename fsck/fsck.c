@@ -1317,6 +1317,36 @@ static int rescue_orphan_clusters(struct exfat_fsck *fsck)
 		.in.filter = NULL,
 	};
 
+	clu_count = le32_to_cpu(exfat->bs->bsx.clu_count);
+
+	/* find clusters which are not marked as free, but not allocated to
+	 * any files.
+	 */
+	disk_b = (bitmap_t *)exfat->disk_bitmap;
+	alloc_b = (bitmap_t *)exfat->alloc_bitmap;
+	ohead_b = (bitmap_t *)exfat->ohead_bitmap;
+	for (i = 0; i < EXFAT_BITMAP_SIZE(clu_count) / sizeof(bitmap_t); i++)
+		ohead_b[i] = disk_b[i] & ~alloc_b[i];
+
+	/* no orphan clusters */
+	if (exfat_bitmap_find_one(exfat, exfat->ohead_bitmap,
+				EXFAT_FIRST_CLUSTER, &s_clu))
+		return 0;
+
+	err = exfat_create_file(exfat_fsck.exfat,
+				exfat_fsck.exfat->root,
+				"LOST+FOUND",
+				ATTR_SUBDIR);
+	if (err) {
+		exfat_err("failed to create LOST+FOUND directory\n");
+		return err;
+	}
+
+	if (fsync(exfat_fsck.exfat->blk_dev->dev_fd) != 0) {
+		exfat_err("failed to sync()\n");
+		return -EIO;
+	}
+
 	err = read_lostfound(exfat, &lostfound);
 	if (err) {
 		exfat_err("failed to find LOST+FOUND\n");
@@ -1341,17 +1371,6 @@ static int rescue_orphan_clusters(struct exfat_fsck *fsck)
 		goto out;
 	}
 	dset[1].dentry.stream.flags |= EXFAT_SF_CONTIGUOUS;
-
-	clu_count = le32_to_cpu(exfat->bs->bsx.clu_count);
-
-	/* find clusters which are not marked as free, but not allocated to
-	 * any files.
-	 */
-	disk_b = (bitmap_t *)exfat->disk_bitmap;
-	alloc_b = (bitmap_t *)exfat->alloc_bitmap;
-	ohead_b = (bitmap_t *)exfat->ohead_bitmap;
-	for (i = 0; i < EXFAT_BITMAP_SIZE(clu_count) / sizeof(bitmap_t); i++)
-		ohead_b[i] = disk_b[i] & ~alloc_b[i];
 
 	/* create temporary files and allocate contiguous orphan clusters
 	 * to each file.
@@ -1542,23 +1561,6 @@ int main(int argc, char * const argv[])
 	if (ret) {
 		exfat_err("failed to verify root directory.\n");
 		goto out;
-	}
-
-	if (exfat_fsck.options & FSCK_OPTS_RESCUE_CLUS) {
-		ret = exfat_create_file(exfat_fsck.exfat,
-					exfat_fsck.exfat->root,
-					"LOST+FOUND",
-					ATTR_SUBDIR);
-		if (ret) {
-			exfat_err("failed to create lost+found directory\n");
-			goto out;
-		}
-
-		if (fsync(exfat_fsck.exfat->blk_dev->dev_fd) != 0) {
-			ret = -EIO;
-			exfat_err("failed to sync()\n");
-			goto out;
-		}
 	}
 
 	exfat_debug("verifying directory entries...\n");
