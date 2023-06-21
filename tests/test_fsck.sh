@@ -43,6 +43,17 @@ for TESTCASE_DIR in $TESTCASE_DIRS; do
 		DEV_FILE=$IMAGE_FILE
 	fi
 
+	# Run fsck to detect corruptions
+	$FSCK_PROG "$DEV_FILE" | grep -q "ERROR:\|corrupted"
+	if [ $? -ne 0 ]; then
+		echo ""
+		echo "Failed to detect corruption for ${TESTCASE_DIR}"
+		if [ $NEED_LOOPDEV ]; then
+			losetup -d "${DEV_FILE}"
+		fi
+		cleanup
+	fi
+
 	# Run fsck for repair
 	$FSCK_PROG $FSCK_OPTS "$DEV_FILE"
 	if [ $? -ne 1 ] && [ $? -ne 0 ]; then
