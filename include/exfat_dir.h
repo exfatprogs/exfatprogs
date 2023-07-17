@@ -27,6 +27,8 @@ struct exfat_de_iter {
 	int			max_skip_dentries;
 #define INVALID_NAME_NUM_MAX	9999999
 	unsigned int		invalid_name_num;
+
+	char *name_hash_bitmap;		/* bitmap of children's name hashes */
 };
 
 struct exfat_lookup_filter {

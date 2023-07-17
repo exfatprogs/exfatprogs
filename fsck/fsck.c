@@ -677,6 +677,35 @@ static int check_inode(struct exfat_de_iter *iter, struct exfat_inode *node)
 	return valid ? ret : -EINVAL;
 }
 
+static int handle_duplicated_filename(struct exfat_de_iter *iter,
+		struct exfat_inode *inode)
+{
+	int ret;
+	struct exfat_lookup_filter filter;
+	char filename[PATH_MAX + 1] = {0};
+
+	ret = exfat_lookup_file_by_utf16name(iter->exfat, iter->parent,
+			inode->name, &filter);
+	if (ret)
+		return ret;
+
+	free(filter.out.dentry_set);
+
+	/* Hash is same, but filename is not same */
+	if (exfat_de_iter_device_offset(iter) == filter.out.dev_offset)
+		return 0;
+
+	ret = exfat_utf16_dec(inode->name, NAME_BUFFER_SIZE, filename,
+			PATH_MAX);
+	if (ret < 0) {
+		exfat_err("failed to decode filename\n");
+		return ret;
+	}
+
+	return exfat_repair_rename_ask(&exfat_fsck, iter, filename,
+			ER_DE_DUPLICATED_NAME, "filename is duplicated");
+}
+
 static int check_name_dentry_set(struct exfat_de_iter *iter,
 				 struct exfat_inode *inode)
 {
@@ -707,6 +736,15 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 			return -EINVAL;
 		}
 	}
+
+	if (BITMAP_GET(iter->name_hash_bitmap, hash)) {
+		int ret = handle_duplicated_filename(iter, inode);
+
+		if (ret)
+			return ret;
+	} else
+		BITMAP_SET(iter->name_hash_bitmap, hash);
+
 	return 0;
 }
 
@@ -1051,6 +1089,10 @@ static int read_children(struct exfat_fsck *fsck, struct exfat_inode *dir)
 	else if (ret)
 		return ret;
 
+	de_iter->name_hash_bitmap = fsck->name_hash_bitmap;
+	memset(fsck->name_hash_bitmap, 0,
+			EXFAT_BITMAP_SIZE(EXFAT_MAX_HASH_COUNT));
+
 	while (1) {
 		ret = exfat_de_iter_get(de_iter, 0, &dentry);
 		if (ret == EOF) {
@@ -1180,6 +1222,12 @@ static int exfat_filesystem_check(struct exfat_fsck *fsck)
 		return -ENOENT;
 	}
 
+	fsck->name_hash_bitmap = malloc(EXFAT_BITMAP_SIZE(EXFAT_MAX_HASH_COUNT));
+	if (!fsck->name_hash_bitmap) {
+		exfat_err("failed to allocate name hash bitmap\n");
+		return -ENOMEM;
+	}
+
 	list_add(&exfat->root->list, &exfat->dir_list);
 
 	while (!list_empty(&exfat->dir_list)) {
@@ -1208,6 +1256,7 @@ static int exfat_filesystem_check(struct exfat_fsck *fsck)
 	}
 out:
 	exfat_free_dir_list(exfat);
+	free(fsck->name_hash_bitmap);
 	return ret;
 }
 

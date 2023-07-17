@@ -54,6 +54,7 @@ static struct exfat_repair_problem problems[] = {
 	{ER_DE_NAME_HASH, ERF_PREEN_YES, ERP_FIX, 0, 0, 0},
 	{ER_DE_NAME_LEN, ERF_PREEN_YES, ERP_FIX, 0, 0, 0},
 	{ER_DE_DOT_NAME, ERF_PREEN_YES, ERP_RENAME, 2, 3, 4},
+	{ER_DE_DUPLICATED_NAME, ERF_PREEN_YES, ERP_RENAME, 2, 3, 4},
 	{ER_FILE_VALID_SIZE, ERF_PREEN_YES, ERP_FIX, 0, 0, 0},
 	{ER_FILE_INVALID_CLUS, ERF_PREEN_YES, ERP_TRUNCATE, 0, 0, 0},
 	{ER_FILE_FIRST_CLUS, ERF_PREEN_YES, ERP_TRUNCATE, 0, 0, 0},
@@ -245,7 +246,7 @@ ask_again:
 		char *rename = NULL;
 		__u16 hash;
 		struct exfat_dentry *dentry;
-		int ret;
+		int ret, i;
 
 		switch (num) {
 		case 1:
@@ -280,6 +281,15 @@ ask_again:
 		exfat_de_iter_get_dirty(iter, 1, &dentry);
 		dentry->stream_name_len = (__u8)ret;
 		dentry->stream_name_hash = cpu_to_le16(hash);
+
+		exfat_de_iter_get_dirty(iter, 0, &dentry);
+		i = dentry->file_num_ext;
+		dentry->file_num_ext = 2;
+
+		for (; i > 2; i--) {
+			exfat_de_iter_get_dirty(iter, i, &dentry);
+			dentry->type &= EXFAT_DELETE;
+		}
 	}
 
 	return 0;
