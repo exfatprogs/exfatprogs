@@ -710,76 +710,6 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 	return 0;
 }
 
-static int check_bad_char(char w)
-{
-	return (w < 0x0020) || (w == '*') || (w == '?') || (w == '<') ||
-		(w == '>') || (w == '|') || (w == '"') || (w == ':') ||
-		(w == '/') || (w == '\\');
-}
-
-static char *get_rename_from_user(struct exfat_de_iter *iter)
-{
-	char *rename = malloc(ENTRY_NAME_MAX + 2);
-
-	if (!rename)
-		return NULL;
-
-retry:
-	/* +2 means LF(Line Feed) and NULL terminator */
-	memset(rename, 0x1, ENTRY_NAME_MAX + 2);
-	printf("New name: ");
-	if (fgets(rename, ENTRY_NAME_MAX + 2, stdin)) {
-		int i, len, err;
-		struct exfat_lookup_filter filter;
-
-		len = strlen(rename);
-		/* Remove LF in filename */
-		rename[len - 1] = '\0';
-		for (i = 0; i < len - 1; i++) {
-			if (check_bad_char(rename[i])) {
-				printf("filename contain invalid character(%c)\n", rename[i]);
-				goto retry;
-			}
-		}
-
-		exfat_de_iter_flush(iter);
-		err = exfat_lookup_file(iter->exfat, iter->parent, rename, &filter);
-		if (!err) {
-			printf("file(%s) already exists, retry to insert name\n", rename);
-			goto retry;
-		}
-	}
-
-	return rename;
-}
-
-static char *generate_rename(struct exfat_de_iter *iter)
-{
-	char *rename;
-
-	if (iter->dot_name_num > DOT_NAME_NUM_MAX)
-		return NULL;
-
-	rename = malloc(ENTRY_NAME_MAX + 1);
-	if (!rename)
-		return NULL;
-
-	while (1) {
-		struct exfat_lookup_filter filter;
-		int err;
-
-		snprintf(rename, ENTRY_NAME_MAX + 1, "FILE%07d.CHK",
-			 iter->dot_name_num++);
-		err = exfat_lookup_file(iter->exfat, iter->parent, rename,
-					&filter);
-		if (!err)
-			continue;
-		break;
-	}
-
-	return rename;
-}
-
 const __le16 MSDOS_DOT[ENTRY_NAME_MAX] = {cpu_to_le16(46), 0, };
 const __le16 MSDOS_DOTDOT[ENTRY_NAME_MAX] = {cpu_to_le16(46), cpu_to_le16(46), 0, };
 
@@ -788,8 +718,6 @@ static int handle_dot_dotdot_filename(struct exfat_de_iter *iter,
 				      int strm_name_len)
 {
 	char *filename;
-	char error_msg[150];
-	int num;
 
 	if (!memcmp(dentry->name_unicode, MSDOS_DOT, strm_name_len * 2))
 		filename = ".";
@@ -799,56 +727,8 @@ static int handle_dot_dotdot_filename(struct exfat_de_iter *iter,
 	else
 		return 0;
 
-	sprintf(error_msg, "ERROR: '%s' filename is not allowed.\n"
-			" [1] Insert the name you want to rename.\n"
-			" [2] Automatically renames filename.\n"
-			" [3] Bypass this check(No repair)\n", filename);
-ask_again:
-	num = exfat_repair_ask(&exfat_fsck, ER_DE_DOT_NAME,
-			       error_msg);
-	if (num) {
-		__le16 utf16_name[ENTRY_NAME_MAX];
-		char *rename = NULL;
-		__u16 hash;
-		struct exfat_dentry *stream_de;
-		int ret;
-
-		switch (num) {
-		case 1:
-			rename = get_rename_from_user(iter);
-			break;
-		case 2:
-			rename = generate_rename(iter);
-			break;
-		case 3:
-			break;
-		default:
-			exfat_info("select 1 or 2 number instead of %d\n", num);
-			goto ask_again;
-		}
-
-		if (!rename)
-			return -EINVAL;
-
-		exfat_info("%s filename is renamed to %s\n", filename, rename);
-
-		exfat_de_iter_get_dirty(iter, 2, &dentry);
-
-		memset(utf16_name, 0, sizeof(utf16_name));
-		ret = exfat_utf16_enc(rename, utf16_name, sizeof(utf16_name));
-		free(rename);
-		if (ret < 0)
-			return ret;
-
-		ret >>= 1;
-		memcpy(dentry->name_unicode, utf16_name, ENTRY_NAME_MAX * 2);
-		hash = exfat_calc_name_hash(iter->exfat, utf16_name, ret);
-		exfat_de_iter_get_dirty(iter, 1, &stream_de);
-		stream_de->stream_name_len = (__u8)ret;
-		stream_de->stream_name_hash = cpu_to_le16(hash);
-	}
-
-	return 0;
+	return exfat_repair_rename_ask(&exfat_fsck, iter, filename,
+			ER_DE_DOT_NAME, "filename is not allowed");
 }
 
 static int read_file_dentry_set(struct exfat_de_iter *iter,

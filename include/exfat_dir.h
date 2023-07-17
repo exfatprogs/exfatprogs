@@ -25,8 +25,8 @@ struct exfat_de_iter {
 	off_t			de_file_offset;
 	off_t			next_read_offset;
 	int			max_skip_dentries;
-#define DOT_NAME_NUM_MAX	9999999
-	unsigned int		dot_name_num;
+#define INVALID_NAME_NUM_MAX	9999999
+	unsigned int		invalid_name_num;
 };
 
 struct exfat_lookup_filter {

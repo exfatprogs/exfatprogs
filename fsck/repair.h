@@ -5,6 +5,8 @@
 #ifndef _REPAIR_H
 #define _REPAIR_H
 
+#include "exfat_dir.h"
+
 #define ER_BS_CHECKSUM			0x00000001
 #define ER_BS_BOOT_REGION		0x00000002
 #define ER_DE_CHECKSUM			0x00001001
@@ -30,4 +32,6 @@ struct exfat_fsck;
 int exfat_repair_ask(struct exfat_fsck *fsck, er_problem_code_t prcode,
 		     const char *fmt, ...);
 
+int exfat_repair_rename_ask(struct exfat_fsck *fsck, struct exfat_de_iter *iter,
+		char *old_name, er_problem_code_t prcode, char *error_msg);
 #endif

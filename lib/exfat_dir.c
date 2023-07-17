@@ -237,7 +237,7 @@ int exfat_de_iter_init(struct exfat_de_iter *iter, struct exfat *exfat,
 	iter->de_file_offset = 0;
 	iter->next_read_offset = iter->read_size;
 	iter->max_skip_dentries = 0;
-	iter->dot_name_num = 0;
+	iter->invalid_name_num = 0;
 
 	if (iter->parent->size == 0)
 		return EOF;
