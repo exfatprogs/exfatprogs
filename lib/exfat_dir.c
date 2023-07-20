@@ -689,7 +689,7 @@ int exfat_update_file_dentry_set(struct exfat *exfat,
 	return 0;
 }
 
-int exfat_find_free_cluster(struct exfat *exfat,
+static int find_free_cluster(struct exfat *exfat,
 			     clus_t start, clus_t *new_clu)
 {
 	clus_t end = le32_to_cpu(exfat->bs->bsx.clu_count) +
@@ -816,7 +816,7 @@ static int exfat_alloc_cluster(struct exfat *exfat, struct exfat_inode *inode,
 	if ((need_dset && !inode->dentry_set) || inode->is_contiguous)
 		return -EINVAL;
 
-	err = exfat_find_free_cluster(exfat, exfat->start_clu, new_clu);
+	err = find_free_cluster(exfat, exfat->start_clu, new_clu);
 	if (err) {
 		exfat->start_clu = EXFAT_FIRST_CLUSTER;
 		exfat_err("failed to find an free cluster\n");

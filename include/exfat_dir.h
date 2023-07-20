@@ -81,7 +81,6 @@ int exfat_update_file_dentry_set(struct exfat *exfat,
 int exfat_build_file_dentry_set(struct exfat *exfat, const char *name,
 				unsigned short attr, struct exfat_dentry **dentry_set,
 				int *dentry_count);
-int exfat_find_free_cluster(struct exfat *exfat, clus_t start, clus_t *new_clu);
 int exfat_add_dentry_set(struct exfat *exfat, struct exfat_dentry_loc *loc,
 			 struct exfat_dentry *dset, int dcount,
 			 bool need_next_loc);
