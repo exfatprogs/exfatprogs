@@ -485,15 +485,12 @@ static int filter_lookup_file(struct exfat_de_iter *de_iter,
 	return 0;
 }
 
-int exfat_lookup_file(struct exfat *exfat, struct exfat_inode *parent,
-		      const char *name, struct exfat_lookup_filter *filter_out)
+int exfat_lookup_file_by_utf16name(struct exfat *exfat,
+				 struct exfat_inode *parent,
+				 __le16 *utf16_name,
+				 struct exfat_lookup_filter *filter_out)
 {
 	int retval;
-	__le16 utf16_name[PATH_MAX + 2] = {0, };
-
-	retval = (int)exfat_utf16_enc(name, utf16_name, sizeof(utf16_name));
-	if (retval < 0)
-		return retval;
 
 	filter_out->in.type = EXFAT_FILE;
 	filter_out->in.filter = filter_lookup_file;
@@ -504,6 +501,20 @@ int exfat_lookup_file(struct exfat *exfat, struct exfat_inode *parent,
 		return retval;
 
 	return 0;
+}
+
+int exfat_lookup_file(struct exfat *exfat, struct exfat_inode *parent,
+		      const char *name, struct exfat_lookup_filter *filter_out)
+{
+	int retval;
+	__le16 utf16_name[PATH_MAX + 2] = {0, };
+
+	retval = (int)exfat_utf16_enc(name, utf16_name, sizeof(utf16_name));
+	if (retval < 0)
+		return retval;
+
+	return exfat_lookup_file_by_utf16name(exfat, parent, utf16_name,
+			filter_out);
 }
 
 void exfat_calc_dentry_checksum(struct exfat_dentry *dentry,
