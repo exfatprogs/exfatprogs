@@ -811,7 +811,7 @@ ask_again:
 		char *rename = NULL;
 		__u16 hash;
 		struct exfat_dentry *stream_de;
-		int name_len, ret;
+		int ret;
 
 		switch (num) {
 		case 1:
@@ -840,11 +840,11 @@ ask_again:
 		if (ret < 0)
 			return ret;
 
+		ret >>= 1;
 		memcpy(dentry->name_unicode, utf16_name, ENTRY_NAME_MAX * 2);
-		name_len = exfat_utf16_len(utf16_name, ENTRY_NAME_MAX * 2);
-		hash = exfat_calc_name_hash(iter->exfat, utf16_name, (int)name_len);
+		hash = exfat_calc_name_hash(iter->exfat, utf16_name, ret);
 		exfat_de_iter_get_dirty(iter, 1, &stream_de);
-		stream_de->stream_name_len = (__u8)name_len;
+		stream_de->stream_name_len = (__u8)ret;
 		stream_de->stream_name_hash = cpu_to_le16(hash);
 	}
 
