@@ -342,7 +342,7 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 	int nbytes;
 
 	/* Set volume label entry */
-	ed[0].type = EXFAT_VOLUME;
+	ed[0].type = ui->volume_label_len > 0 ? EXFAT_VOLUME : 0x03;
 	memset(ed[0].vol_label, 0, 22);
 	memcpy(ed[0].vol_label, ui->volume_label, ui->volume_label_len);
 	ed[0].vol_char_cnt = ui->volume_label_len/2;
