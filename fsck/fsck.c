@@ -674,7 +674,7 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 	exfat_de_iter_get(iter, 1, &stream_de);
 
 	name_len = exfat_utf16_len(inode->name, NAME_BUFFER_SIZE);
-	if (stream_de->stream_name_len != name_len) {
+	if (name_len && stream_de->stream_name_len != name_len) {
 		if (repair_file_ask(iter, NULL, ER_DE_NAME_LEN,
 				    "the name length of a file is wrong")) {
 			exfat_de_iter_get_dirty(iter, 1, &stream_de);
@@ -683,6 +683,18 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 		} else {
 			return -EINVAL;
 		}
+	}
+
+	ret = exfat_check_name(inode->name, stream_de->stream_name_len);
+	if (ret != stream_de->stream_name_len) {
+		char err_msg[36];
+
+		snprintf(err_msg, sizeof(err_msg),
+			"filename has invalid character '%c'",
+			le16_to_cpu(inode->name[ret]));
+
+		return exfat_repair_rename_ask(&exfat_fsck, iter, inode->name,
+			ER_DE_INVALID_NAME, err_msg);
 	}
 
 	hash = exfat_calc_name_hash(iter->exfat, inode->name, (int)name_len);
