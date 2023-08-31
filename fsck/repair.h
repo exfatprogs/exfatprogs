@@ -35,5 +35,5 @@ int exfat_repair_ask(struct exfat_fsck *fsck, er_problem_code_t prcode,
 		     const char *fmt, ...);
 
 int exfat_repair_rename_ask(struct exfat_fsck *fsck, struct exfat_de_iter *iter,
-		char *old_name, er_problem_code_t prcode, char *error_msg);
+		__le16 *uname, er_problem_code_t prcode, char *error_msg);
 #endif

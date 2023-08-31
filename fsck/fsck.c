@@ -647,7 +647,6 @@ static int handle_duplicated_filename(struct exfat_de_iter *iter,
 {
 	int ret;
 	struct exfat_lookup_filter filter;
-	char filename[PATH_MAX + 1] = {0};
 
 	ret = exfat_lookup_file_by_utf16name(iter->exfat, iter->parent,
 			inode->name, &filter);
@@ -660,14 +659,7 @@ static int handle_duplicated_filename(struct exfat_de_iter *iter,
 	if (exfat_de_iter_device_offset(iter) == filter.out.dev_offset)
 		return 0;
 
-	ret = exfat_utf16_dec(inode->name, NAME_BUFFER_SIZE, filename,
-			PATH_MAX);
-	if (ret < 0) {
-		exfat_err("failed to decode filename\n");
-		return ret;
-	}
-
-	return exfat_repair_rename_ask(&exfat_fsck, iter, filename,
+	return exfat_repair_rename_ask(&exfat_fsck, iter, inode->name,
 			ER_DE_DUPLICATED_NAME, "filename is duplicated");
 }
 
@@ -713,21 +705,20 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 	return ret;
 }
 
-const __le16 MSDOS_DOT[ENTRY_NAME_MAX] = {cpu_to_le16(46), 0, };
-const __le16 MSDOS_DOTDOT[ENTRY_NAME_MAX] = {cpu_to_le16(46), cpu_to_le16(46), 0, };
+#define MSDOS_DOT	cpu_to_le16('.')
 
 static int handle_dot_dotdot_filename(struct exfat_de_iter *iter,
-				      struct exfat_dentry *dentry,
+				      __le16 *filename,
 				      int strm_name_len)
 {
-	char *filename;
+	int i;
 
-	if (!memcmp(dentry->name_unicode, MSDOS_DOT, strm_name_len * 2))
-		filename = ".";
-	else if (!memcmp(dentry->name_unicode, MSDOS_DOTDOT,
-			 strm_name_len * 2))
-		filename = "..";
-	else
+	for (i = 0; i < strm_name_len; i++) {
+		if (filename[i] != MSDOS_DOT)
+			return 0;
+	}
+
+	if (filename[i])
 		return 0;
 
 	return exfat_repair_rename_ask(&exfat_fsck, iter, filename,
@@ -817,7 +808,7 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 	}
 
 	if (file_de->file_num_ext == 2 && stream_de->stream_name_len <= 2) {
-		ret = handle_dot_dotdot_filename(iter, dentry,
+		ret = handle_dot_dotdot_filename(iter, node->name,
 				stream_de->stream_name_len);
 		if (ret < 0) {
 			*skip_dentries = file_de->file_num_ext + 1;

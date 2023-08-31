@@ -240,9 +240,15 @@ static int generate_rename(struct exfat_de_iter *iter, __le16 *utf16_name,
 }
 
 int exfat_repair_rename_ask(struct exfat_fsck *fsck, struct exfat_de_iter *iter,
-		char *old_name, er_problem_code_t prcode, char *error_msg)
+		__le16 *uname, er_problem_code_t prcode, char *error_msg)
 {
 	int num;
+	char old_name[PATH_MAX + 1] = {0};
+
+	if (exfat_utf16_dec(uname, NAME_BUFFER_SIZE, old_name, PATH_MAX) <= 0) {
+		exfat_err("failed to decode filename\n");
+		return -EINVAL;
+	}
 
 ask_again:
 	num = exfat_repair_ask(fsck, prcode, "ERROR: '%s' %s.\n%s",
