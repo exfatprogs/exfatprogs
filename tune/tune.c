@@ -118,8 +118,7 @@ int main(int argc, char *argv[])
 	if (argc < 3)
 		usage();
 
-	memset(ui.dev_name, 0, sizeof(ui.dev_name));
-	snprintf(ui.dev_name, sizeof(ui.dev_name), "%s", argv[argc - 1]);
+	ui.dev_name = argv[argc - 1];
 
 	ret = exfat_get_blk_dev_info(&ui, &bd);
 	if (ret < 0)

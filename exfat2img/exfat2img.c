@@ -926,7 +926,7 @@ int main(int argc, char * const argv[])
 	}
 
 	memset(&ui, 0, sizeof(ui));
-	snprintf(ui.dev_name, sizeof(ui.dev_name), "%s", blkdev_path);
+	ui.dev_name = blkdev_path;
 	if (restore)
 		ui.writeable = true;
 	else

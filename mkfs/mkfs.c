@@ -737,8 +737,7 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	memset(ui.dev_name, 0, sizeof(ui.dev_name));
-	snprintf(ui.dev_name, sizeof(ui.dev_name), "%s", argv[optind]);
+	ui.dev_name = argv[optind];
 
 	ret = exfat_get_blk_dev_info(&ui, &bd);
 	if (ret < 0)

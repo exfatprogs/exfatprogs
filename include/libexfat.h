@@ -78,7 +78,7 @@ struct exfat_blk_dev {
 };
 
 struct exfat_user_input {
-	char dev_name[255];
+	const char *dev_name;
 	bool writeable;
 	unsigned int sector_size;
 	unsigned int cluster_size;
