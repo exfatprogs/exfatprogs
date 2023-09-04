@@ -78,7 +78,7 @@ int main(int argc, char *argv[])
 	if (version_only)
 		exit(EXIT_FAILURE);
 
-	if (argc < 2)
+	if (argc - optind != 1)
 		usage();
 
 	ui.dev_name = argv[serial_mode + 1];
