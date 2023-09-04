@@ -494,6 +494,167 @@ int exfat_set_volume_label(struct exfat *exfat, char *label_input)
 	return err;
 }
 
+static inline void print_guid(const char *msg, const __u8 *guid)
+{
+	exfat_info("%s: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
+			msg,
+			guid[0], guid[1], guid[2], guid[3],
+			guid[4], guid[5], guid[5], guid[7],
+			guid[8], guid[9], guid[10], guid[11],
+			guid[12], guid[13], guid[14], guid[15]);
+}
+
+static int set_guid(__u8 *guid, const char *input)
+{
+	int i, j, zero_len = 0;
+	int len = strlen(input);
+
+	if (len != VOLUME_GUID_LEN * 2 && len != VOLUME_GUID_LEN * 2 + 4) {
+		exfat_err("invalid format for volume guid\n");
+		return -EINVAL;
+	}
+
+	for (i = 0, j = 0; i < len; i++) {
+		unsigned char ch = input[i];
+
+		if (ch >= '0' && ch <= '9')
+			ch -= '0';
+		else if (ch >= 'a' && ch <= 'f')
+			ch -= 'a' - 0xA;
+		else if (ch >= 'A' && ch <= 'F')
+			ch -= 'A' - 0xA;
+		else if (ch == '-' && len == VOLUME_GUID_LEN * 2 + 4 &&
+			 (i == 8 || i == 13 || i == 18 || i == 23))
+			continue;
+		else {
+			exfat_err("invalid character '%c' for volume GUID\n", ch);
+			return -EINVAL;
+		}
+
+		if (j & 1)
+			guid[j >> 1] |= ch;
+		else
+			guid[j >> 1] = ch << 4;
+
+		j++;
+
+		if (ch == 0)
+			zero_len++;
+	}
+
+	if (zero_len == VOLUME_GUID_LEN * 2) {
+		exfat_err("%s is invalid for volume GUID\n", input);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int exfat_read_volume_guid(struct exfat *exfat)
+{
+	int err;
+	uint16_t checksum = 0;
+	struct exfat_dentry *dentry;
+	struct exfat_lookup_filter filter = {
+		.in.type = EXFAT_GUID,
+		.in.dentry_count = 1,
+		.in.filter = NULL,
+	};
+
+	err = exfat_lookup_dentry_set(exfat, exfat->root, &filter);
+	if (err)
+		return err;
+
+	dentry = filter.out.dentry_set;
+	exfat_calc_dentry_checksum(dentry, &checksum, true);
+
+	if (cpu_to_le16(checksum) == dentry->dentry.guid.checksum)
+		print_guid("GUID", dentry->dentry.guid.guid);
+	else
+		exfat_info("GUID is corrupted, please delete it or set a new one\n");
+
+	free(dentry);
+
+	return err;
+}
+
+int __exfat_set_volume_guid(struct exfat_dentry *dentry, const char *guid)
+{
+	int err;
+	uint16_t checksum = 0;
+
+	memset(dentry, 0, sizeof(*dentry));
+	dentry->type = EXFAT_GUID;
+
+	err = set_guid(dentry->dentry.guid.guid, guid);
+	if (err)
+		return err;
+
+	exfat_calc_dentry_checksum(dentry, &checksum, true);
+	dentry->dentry.guid.checksum = cpu_to_le16(checksum);
+
+	return 0;
+}
+
+/*
+ * Create/Update/Delete GUID dentry in root directory
+ *
+ * create/update GUID if @guid is not NULL.
+ * delete GUID if @guid is NULL.
+ */
+int exfat_set_volume_guid(struct exfat *exfat, const char *guid)
+{
+	struct exfat_dentry *dentry;
+	struct exfat_dentry_loc loc;
+	int err;
+
+	struct exfat_lookup_filter filter = {
+		.in.type = EXFAT_GUID,
+		.in.dentry_count = 1,
+		.in.filter = NULL,
+	};
+
+	err = exfat_lookup_dentry_set(exfat, exfat->root, &filter);
+	if (!err) {
+		/* GUID entry is found */
+		dentry = filter.out.dentry_set;
+	} else {
+		/* no GUID to delete */
+		if (guid == NULL)
+			return 0;
+
+		dentry = calloc(1, sizeof(*dentry));
+		if (!dentry)
+			return -ENOMEM;
+	}
+
+	if (guid) {
+		/* Set GUID */
+		err = __exfat_set_volume_guid(dentry, guid);
+		if (err)
+			goto out;
+	} else {
+		/* Delete GUID */
+		dentry->type &= ~EXFAT_INVAL;
+	}
+
+	loc.parent = exfat->root;
+	loc.file_offset = filter.out.file_offset;
+	loc.dev_offset = filter.out.dev_offset;
+	err = exfat_add_dentry_set(exfat, &loc, dentry, 1, false);
+	if (!err) {
+		if (guid)
+			print_guid("new GUID", dentry->dentry.guid.guid);
+		else
+			exfat_info("GUID is deleted\n");
+	}
+
+out:
+	free(dentry);
+
+	return err;
+}
+
 int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned int sec_off)
 {
 	int ret;

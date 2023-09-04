@@ -133,6 +133,7 @@ struct pbr {
 };
 
 #define VOLUME_LABEL_MAX_LEN	11
+#define VOLUME_GUID_LEN		16
 #define ENTRY_NAME_MAX		15
 
 struct exfat_dentry {
@@ -190,6 +191,13 @@ struct exfat_dentry {
 			__le32 start_clu;
 			__le64 size;
 		} __attribute__((packed)) upcase; /* up-case table directory entry */
+		struct {
+			__u8 num_ext;
+			__le16 checksum;
+			__u16 flags;
+			__u8 guid[VOLUME_GUID_LEN];
+			__u8 reserved[10];
+		} __attribute__((packed)) guid; /* volume GUID directory entry */
 	} __attribute__((packed)) dentry;
 } __attribute__((packed));
 
