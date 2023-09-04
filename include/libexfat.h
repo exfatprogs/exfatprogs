@@ -88,6 +88,7 @@ struct exfat_user_input {
 	__u16 volume_label[VOLUME_LABEL_MAX_LEN];
 	int volume_label_len;
 	unsigned int volume_serial;
+	const char *guid;
 };
 
 struct exfat;
