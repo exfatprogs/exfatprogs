@@ -472,7 +472,7 @@ static int filter_lookup_file(struct exfat_de_iter *de_iter,
 		if (retval || name_de->type != EXFAT_NAME)
 			return 1;
 
-		len = MIN(name_len, ENTRY_NAME_MAX);
+		len = MIN(name_len + 1, ENTRY_NAME_MAX);
 		if (memcmp(name_de->dentry.name.unicode_0_14,
 			   name, len * 2) != 0)
 			return 1;
