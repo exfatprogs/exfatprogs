@@ -160,34 +160,43 @@ int exfat_repair_ask(struct exfat_fsck *fsck, er_problem_code_t prcode,
 	return repair;
 }
 
-static int check_bad_char(char w)
+static int check_bad_utf16_char(unsigned short w)
 {
 	return (w < 0x0020) || (w == '*') || (w == '?') || (w == '<') ||
 		(w == '>') || (w == '|') || (w == '"') || (w == ':') ||
 		(w == '/') || (w == '\\');
 }
 
-static char *get_rename_from_user(struct exfat_de_iter *iter)
+static int get_rename_from_user(struct exfat_de_iter *iter,
+		__le16 *utf16_name, int name_size)
 {
+	int len = 0;
 	char *rename = malloc(ENTRY_NAME_MAX + 2);
 
 	if (!rename)
-		return NULL;
+		return -ENOMEM;
 
 retry:
 	/* +2 means LF(Line Feed) and NULL terminator */
 	memset(rename, 0x1, ENTRY_NAME_MAX + 2);
 	printf("New name: ");
 	if (fgets(rename, ENTRY_NAME_MAX + 2, stdin)) {
-		int i, len, err;
+		int i, err;
 		struct exfat_lookup_filter filter;
 
 		len = strlen(rename);
 		/* Remove LF in filename */
 		rename[len - 1] = '\0';
-		for (i = 0; i < len - 1; i++) {
-			if (check_bad_char(rename[i])) {
-				printf("filename contain invalid character(%c)\n", rename[i]);
+
+		memset(utf16_name, 0, name_size);
+		len = exfat_utf16_enc(rename, utf16_name, name_size);
+		if (len < 0)
+			goto out;
+
+		for (i = 0; i < len >> 1; i++) {
+			if (check_bad_utf16_char(le16_to_cpu(utf16_name[i]))) {
+				printf("filename contain invalid character(%c)\n",
+						le16_to_cpu(utf16_name[i]));
 				goto retry;
 			}
 		}
@@ -200,23 +209,27 @@ retry:
 		}
 	}
 
-	return rename;
+out:
+	free(rename);
+
+	return len;
 }
 
-static char *generate_rename(struct exfat_de_iter *iter)
+static int generate_rename(struct exfat_de_iter *iter, __le16 *utf16_name,
+		int name_size)
 {
+	int err;
 	char *rename;
 
 	if (iter->invalid_name_num > INVALID_NAME_NUM_MAX)
-		return NULL;
+		return -ERANGE;
 
 	rename = malloc(ENTRY_NAME_MAX + 1);
 	if (!rename)
-		return NULL;
+		return -ENOMEM;
 
 	while (1) {
 		struct exfat_lookup_filter filter;
-		int err;
 
 		snprintf(rename, ENTRY_NAME_MAX + 1, "FILE%07d.CHK",
 			 iter->invalid_name_num++);
@@ -227,7 +240,11 @@ static char *generate_rename(struct exfat_de_iter *iter)
 		break;
 	}
 
-	return rename;
+	memset(utf16_name, 0, name_size);
+	err = exfat_utf16_enc(rename, utf16_name, name_size);
+	free(rename);
+
+	return err;
 }
 
 int exfat_repair_rename_ask(struct exfat_fsck *fsck, struct exfat_de_iter *iter,
@@ -243,37 +260,30 @@ ask_again:
 			" [3] Bypass this check(No repair)\n");
 	if (num) {
 		__le16 utf16_name[ENTRY_NAME_MAX];
-		char *rename = NULL;
 		__u16 hash;
 		struct exfat_dentry *dentry;
 		int ret;
 
 		switch (num) {
 		case 1:
-			rename = get_rename_from_user(iter);
+			ret = get_rename_from_user(iter, utf16_name,
+					sizeof(utf16_name));
 			break;
 		case 2:
-			rename = generate_rename(iter);
+			ret = generate_rename(iter, utf16_name,
+					sizeof(utf16_name));
 			break;
 		case 3:
-			break;
+			return -EINVAL;
 		default:
 			exfat_info("select 1 or 2 number instead of %d\n", num);
 			goto ask_again;
 		}
 
-		if (!rename)
+		if (ret < 0)
 			return -EINVAL;
 
-		exfat_info("%s filename is renamed to %s\n", old_name, rename);
-
 		exfat_de_iter_get_dirty(iter, 2, &dentry);
-
-		memset(utf16_name, 0, sizeof(utf16_name));
-		ret = exfat_utf16_enc(rename, utf16_name, sizeof(utf16_name));
-		free(rename);
-		if (ret < 0)
-			return ret;
 
 		ret >>= 1;
 		memcpy(dentry->name_unicode, utf16_name, ENTRY_NAME_MAX * 2);
