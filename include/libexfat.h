@@ -190,6 +190,7 @@ bool exfat_heap_clus(struct exfat *exfat, clus_t clus);
 int exfat_root_clus_count(struct exfat *exfat);
 int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs);
 int exfat_parse_ulong(const char *s, unsigned long *out);
+int exfat_check_name(__le16 *utf16_name, int len);
 
 /*
  * Exfat Print

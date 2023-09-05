@@ -1058,3 +1058,22 @@ int exfat_parse_ulong(const char *s, unsigned long *out)
 
 	return 0;
 }
+
+static inline int check_bad_utf16_char(unsigned short w)
+{
+	return (w < 0x0020) || (w == '*') || (w == '?') || (w == '<') ||
+		(w == '>') || (w == '|') || (w == '"') || (w == ':') ||
+		(w == '/') || (w == '\\');
+}
+
+int exfat_check_name(__le16 *utf16_name, int len)
+{
+	int i;
+
+	for (i = 0; i < len; i++) {
+		if (check_bad_utf16_char(le16_to_cpu(utf16_name[i])))
+			break;
+	}
+
+	return i;
+}
