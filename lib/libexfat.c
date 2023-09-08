@@ -496,12 +496,20 @@ int exfat_set_volume_label(struct exfat *exfat, char *label_input)
 			volume_label, sizeof(volume_label));
 	if (volume_label_len < 0) {
 		exfat_err("failed to encode volume label\n");
-		free(pvol);
-		return -1;
+		err = -1;
+		goto out;
+	}
+
+	pvol->vol_char_cnt = volume_label_len/2;
+	err = exfat_check_name(volume_label, pvol->vol_char_cnt);
+	if (err != pvol->vol_char_cnt) {
+		exfat_err("volume label contain invalid character(%c)\n",
+				le16_to_cpu(label_input[err]));
+		err = -1;
+		goto out;
 	}
 
 	memcpy(pvol->vol_label, volume_label, volume_label_len);
-	pvol->vol_char_cnt = volume_label_len/2;
 
 	loc.parent = exfat->root;
 	loc.file_offset = filter.out.file_offset;
@@ -509,6 +517,7 @@ int exfat_set_volume_label(struct exfat *exfat, char *label_input)
 	err = exfat_add_dentry_set(exfat, &loc, pvol, dcount, false);
 	exfat_info("new label: %s\n", label_input);
 
+out:
 	free(pvol);
 
 	return err;
