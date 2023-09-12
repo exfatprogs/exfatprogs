@@ -337,8 +337,8 @@ static int exfat_create_bitmap(struct exfat_blk_dev *bd)
 static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
-	struct exfat_dentry ed[3] = {0};
-	int dentries_len = sizeof(struct exfat_dentry) * 3;
+	struct exfat_dentry ed[4] = {0};
+	int dentries_len = sizeof(ed);
 	int nbytes;
 
 	/* Set volume label entry */
@@ -347,17 +347,29 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 	memcpy(ed[0].vol_label, ui->volume_label, ui->volume_label_len);
 	ed[0].vol_char_cnt = ui->volume_label_len/2;
 
+	/* Set volume GUID entry */
+	if (ui->guid) {
+		if (__exfat_set_volume_guid(&ed[1], ui->guid))
+			return -1;
+	} else {
+		/*
+		 * Since a single empty entry cannot be allocated for a
+		 * file, this can reserve the entry for volume GUID.
+		 */
+		ed[1].type = EXFAT_GUID & ~EXFAT_INVAL;
+	}
+
 	/* Set bitmap entry */
-	ed[1].type = EXFAT_BITMAP;
-	ed[1].bitmap_flags = 0;
-	ed[1].bitmap_start_clu = cpu_to_le32(EXFAT_FIRST_CLUSTER);
-	ed[1].bitmap_size = cpu_to_le64(finfo.bitmap_byte_len);
+	ed[2].type = EXFAT_BITMAP;
+	ed[2].bitmap_flags = 0;
+	ed[2].bitmap_start_clu = cpu_to_le32(EXFAT_FIRST_CLUSTER);
+	ed[2].bitmap_size = cpu_to_le64(finfo.bitmap_byte_len);
 
 	/* Set upcase table entry */
-	ed[2].type = EXFAT_UPCASE;
-	ed[2].upcase_checksum = cpu_to_le32(0xe619d30d);
-	ed[2].upcase_start_clu = cpu_to_le32(finfo.ut_start_clu);
-	ed[2].upcase_size = cpu_to_le64(EXFAT_UPCASE_TABLE_SIZE);
+	ed[3].type = EXFAT_UPCASE;
+	ed[3].upcase_checksum = cpu_to_le32(0xe619d30d);
+	ed[3].upcase_start_clu = cpu_to_le32(finfo.ut_start_clu);
+	ed[3].upcase_size = cpu_to_le64(EXFAT_UPCASE_TABLE_SIZE);
 
 	nbytes = pwrite(bd->dev_fd, ed, dentries_len, finfo.root_byte_off);
 	if (nbytes != dentries_len) {
@@ -373,6 +385,7 @@ static void usage(void)
 {
 	fputs("Usage: mkfs.exfat\n"
 		"\t-L | --volume-label=label                              Set volume label\n"
+		"\t-U | --volume-guid=guid                                Set volume GUID\n"
 		"\t-c | --cluster-size=size(or suffixed by 'K' or 'M')    Specify cluster size\n"
 		"\t-b | --boundary-align=size(or suffixed by 'K' or 'M')  Specify boundary alignment\n"
 		"\t     --pack-bitmap                                     Move bitmap into FAT segment\n"
@@ -390,6 +403,7 @@ static void usage(void)
 
 static const struct option opts[] = {
 	{"volume-label",	required_argument,	NULL,	'L' },
+	{"volume-guid",		required_argument,	NULL,	'U' },
 	{"cluster-size",	required_argument,	NULL,	'c' },
 	{"boundary-align",	required_argument,	NULL,	'b' },
 	{"pack-bitmap",		no_argument,		NULL,	PACK_BITMAP },
@@ -615,7 +629,7 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "n:L:c:b:fVqvh", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "n:L:U:c:b:fVqvh", opts, NULL)) != EOF)
 		switch (c) {
 		/*
 		 * Make 'n' option fallthrough to 'L' option for for backward
@@ -632,6 +646,10 @@ int main(int argc, char *argv[])
 			ui.volume_label_len = ret;
 			break;
 		}
+		case 'U':
+			if (*optarg != '\0' && *optarg != '\r')
+				ui.guid = optarg;
+			break;
 		case 'c':
 			ret = parse_size(optarg);
 			if (ret < 0)
