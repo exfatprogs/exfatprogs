@@ -378,6 +378,7 @@ static void usage(void)
 		"\t     --pack-bitmap                                     Move bitmap into FAT segment\n"
 		"\t-f | --full-format                                     Full format\n"
 		"\t-V | --version                                         Show version\n"
+		"\t-q | --quiet                                           Print only errors\n"
 		"\t-v | --verbose                                         Print debug\n"
 		"\t-h | --help                                            Show help\n",
 		stderr);
@@ -394,6 +395,7 @@ static const struct option opts[] = {
 	{"pack-bitmap",		no_argument,		NULL,	PACK_BITMAP },
 	{"full-format",		no_argument,		NULL,	'f' },
 	{"version",		no_argument,		NULL,	'V' },
+	{"quiet",		no_argument,		NULL,	'q' },
 	{"verbose",		no_argument,		NULL,	'v' },
 	{"help",		no_argument,		NULL,	'h' },
 	{"?",			no_argument,		NULL,	'?' },
@@ -605,6 +607,7 @@ int main(int argc, char *argv[])
 	struct exfat_blk_dev bd;
 	struct exfat_user_input ui;
 	bool version_only = false;
+	bool quiet = false;
 
 	init_user_input(&ui);
 
@@ -612,7 +615,7 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "n:L:c:b:fVvh", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "n:L:c:b:fVqvh", opts, NULL)) != EOF)
 		switch (c) {
 		/*
 		 * Make 'n' option fallthrough to 'L' option for for backward
@@ -664,6 +667,10 @@ int main(int argc, char *argv[])
 		case 'V':
 			version_only = true;
 			break;
+		case 'q':
+			print_level = EXFAT_ERROR;
+			quiet = true;
+			break;
 		case 'v':
 			print_level = EXFAT_DEBUG;
 			break;
@@ -673,9 +680,12 @@ int main(int argc, char *argv[])
 			usage();
 	}
 
-	show_version();
-	if (version_only)
+	if (version_only) {
+		show_version();
 		exit(EXIT_FAILURE);
+	} else if (!quiet) {
+		show_version();
+	}
 
 	if (argc - optind != 1) {
 		usage();
@@ -708,6 +718,6 @@ out:
 	if (!ret)
 		exfat_info("\nexFAT format complete!\n");
 	else
-		exfat_info("\nexFAT format fail!\n");
+		exfat_err("\nexFAT format fail!\n");
 	return ret;
 }
