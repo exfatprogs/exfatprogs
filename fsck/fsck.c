@@ -1093,6 +1093,7 @@ static int read_children(struct exfat_fsck *fsck, struct exfat_inode *dir)
 		case EXFAT_VOLUME:
 		case EXFAT_BITMAP:
 		case EXFAT_UPCASE:
+		case EXFAT_GUID:
 			if (dir == exfat->root)
 				break;
 			/* fallthrough */
