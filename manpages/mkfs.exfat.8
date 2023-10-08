@@ -17,6 +17,9 @@ mkfs.exfat \- create an exFAT filesystem
 .B \-L
 .I volume_label
 ] [
+.B \-U
+.I volume_guid
+] [
 .B \-\-pack\-bitmap
 ] [
 .B \-v
@@ -94,6 +97,9 @@ Prints the help and exit.
 .TP
 .BR \-L ", " \-\-volume\-label =\fIlabel\fR
 Specifies the volume label to be associated with the exFAT filesystem.
+.TP
+.BR \-U ", " \-\-volume\-guid =\fIguid\fR
+Specifies the volume GUID to be associated with the exFAT filesystem.
 .TP
 .B \-\-pack\-bitmap
 Attempts to relocate the exFAT allocation bitmap so that it ends at the
