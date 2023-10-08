@@ -356,9 +356,8 @@ int exfat_lookup_dentry_set(struct exfat *exfat, struct exfat_inode *parent,
 	struct exfat_dentry *dentry = NULL;
 	off_t free_file_offset = 0, free_dev_offset = 0;
 	struct exfat_de_iter de_iter;
-	int dentry_count;
+	int dentry_count, empty_dentry_count = 0;
 	int retval;
-	bool last_is_free = false;
 
 	bd = exfat_alloc_buffer(2, exfat->clus_size, exfat->sect_size);
 	if (!bd)
@@ -377,6 +376,12 @@ int exfat_lookup_dentry_set(struct exfat *exfat, struct exfat_inode *parent,
 			fsck_err(parent->parent, parent,
 				 "failed to get a dentry. %d\n", retval);
 			goto out;
+		}
+
+		if (!IS_EXFAT_DELETED(dentry->type)) {
+			if (filter->in.dentry_count == 0 ||
+			    empty_dentry_count < filter->in.dentry_count)
+				empty_dentry_count = 0;
 		}
 
 		dentry_count = 1;
@@ -407,18 +412,17 @@ int exfat_lookup_dentry_set(struct exfat *exfat, struct exfat_inode *parent,
 			} else if (retval < 0) {
 				goto out;
 			}
-			last_is_free = false;
-		} else if ((dentry->type == EXFAT_LAST ||
-			    IS_EXFAT_DELETED(dentry->type))) {
-			if (!last_is_free) {
+		} else if (IS_EXFAT_DELETED(dentry->type)) {
+			if (empty_dentry_count == 0) {
 				free_file_offset =
 					exfat_de_iter_file_offset(&de_iter);
 				free_dev_offset =
 					exfat_de_iter_device_offset(&de_iter);
-				last_is_free = true;
 			}
-		} else {
-			last_is_free = false;
+
+			if (filter->in.dentry_count == 0 ||
+			    empty_dentry_count < filter->in.dentry_count)
+				empty_dentry_count++;
 		}
 
 		exfat_de_iter_advance(&de_iter, dentry_count);
@@ -430,7 +434,7 @@ out:
 			exfat_de_iter_file_offset(&de_iter);
 		filter->out.dev_offset =
 			exfat_de_iter_device_offset(&de_iter);
-	} else if (retval == EOF && last_is_free) {
+	} else if (retval == EOF && empty_dentry_count) {
 		filter->out.file_offset = free_file_offset;
 		filter->out.dev_offset = free_dev_offset;
 	} else {
@@ -495,6 +499,7 @@ int exfat_lookup_file_by_utf16name(struct exfat *exfat,
 	filter_out->in.type = EXFAT_FILE;
 	filter_out->in.filter = filter_lookup_file;
 	filter_out->in.param = utf16_name;
+	filter_out->in.dentry_count = 0;
 
 	retval = exfat_lookup_dentry_set(exfat, parent, filter_out);
 	if (retval < 0)

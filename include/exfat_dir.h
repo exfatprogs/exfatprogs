@@ -34,6 +34,7 @@ struct exfat_de_iter {
 struct exfat_lookup_filter {
 	struct {
 		uint8_t		type;
+		int		dentry_count;
 		/* return 0 if matched, return 1 if not matched,
 		 * otherwise return errno
 		 */
@@ -45,8 +46,15 @@ struct exfat_lookup_filter {
 		struct exfat_dentry	*dentry_set;
 		int			dentry_count;
 		off_t			file_offset;
-		/* device offset where the dentry_set locates, or
-		 * the empty slot locates or EOF if not found.
+		/*
+		 * If the dentry_set found:
+		 *   - device offset where the dentry_set locates.
+		 * If the dentry_set not found:
+		 *   - device offset where the first empty dentry_set locates
+		 *     if in.dentry_count > 0 and there are enough empty dentry.
+		 *   - device offset where the last empty dentry_set locates
+		 *     if in.dentry_count = 0 or no enough empty dentry.
+		 *   - EOF if no empty dentry_set.
 		 */
 		off_t			dev_offset;
 	} out;

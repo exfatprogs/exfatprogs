@@ -412,6 +412,7 @@ int exfat_read_volume_label(struct exfat *exfat)
 	__le16 disk_label[VOLUME_LABEL_MAX_LEN];
 	struct exfat_lookup_filter filter = {
 		.in.type = EXFAT_VOLUME,
+		.in.dentry_count = 0,
 		.in.filter = NULL,
 	};
 
@@ -453,6 +454,7 @@ int exfat_set_volume_label(struct exfat *exfat, char *label_input)
 
 	struct exfat_lookup_filter filter = {
 		.in.type = EXFAT_VOLUME,
+		.in.dentry_count = 1,
 		.in.filter = NULL,
 	};
 

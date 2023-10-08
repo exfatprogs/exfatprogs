@@ -880,6 +880,7 @@ static int read_bitmap(struct exfat *exfat)
 {
 	struct exfat_lookup_filter filter = {
 		.in.type	= EXFAT_BITMAP,
+		.in.dentry_count = 0,
 		.in.filter	= NULL,
 		.in.param	= NULL,
 	};
@@ -954,6 +955,7 @@ static int read_upcase_table(struct exfat *exfat)
 {
 	struct exfat_lookup_filter filter = {
 		.in.type	= EXFAT_UPCASE,
+		.in.dentry_count = 0,
 		.in.filter	= NULL,
 		.in.param	= NULL,
 	};
@@ -1314,6 +1316,7 @@ static int rescue_orphan_clusters(struct exfat_fsck *fsck)
 	struct exfat_dentry_loc loc;
 	struct exfat_lookup_filter lf = {
 		.in.type = EXFAT_INVAL,
+		.in.dentry_count = 0,
 		.in.filter = NULL,
 	};
 
