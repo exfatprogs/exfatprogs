@@ -525,12 +525,17 @@ void exfat_calc_dentry_checksum(struct exfat_dentry *dentry,
 
 	bytes = (uint8_t *)dentry;
 
-	*checksum = ((*checksum << 15) | (*checksum >> 1)) + bytes[0];
-	*checksum = ((*checksum << 15) | (*checksum >> 1)) + bytes[1];
+	/* use += to avoid promotion to int; UBSan complaints about signed overflow otherwise */
+	*checksum = (*checksum << 15) | (*checksum >> 1);
+	*checksum += bytes[0];
+	*checksum = (*checksum << 15) | (*checksum >> 1);
+	*checksum += bytes[1];
 
 	i = primary ? 4 : 2;
-	for (; i < sizeof(*dentry); i++)
-		*checksum = ((*checksum << 15) | (*checksum >> 1)) + bytes[i];
+	for (; i < sizeof(*dentry); i++) {
+		*checksum = (*checksum << 15) | (*checksum >> 1);
+		*checksum += bytes[i];
+	}
 }
 
 static uint16_t calc_dentry_set_checksum(struct exfat_dentry *dset, int dcount)
@@ -559,8 +564,11 @@ uint16_t exfat_calc_name_hash(struct exfat *exfat,
 		ch = exfat->upcase_table[le16_to_cpu(name[i])];
 		ch = cpu_to_le16(ch);
 
-		chksum = ((chksum << 15) | (chksum >> 1)) + (ch & 0xFF);
-		chksum = ((chksum << 15) | (chksum >> 1)) + (ch >> 8);
+		/* use += to avoid promotion to int; UBSan complaints about signed overflow otherwise */
+		chksum = (chksum << 15) | (chksum >> 1);
+		chksum += ch & 0xFF;
+		chksum = (chksum << 15) | (chksum >> 1);
+		chksum += ch >> 8;
 	}
 	return chksum;
 }
