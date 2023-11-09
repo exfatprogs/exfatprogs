@@ -552,7 +552,7 @@ out:
 }
 
 static int dump_bytes_to_stdout(struct exfat2img *ei,
-				off_t start, off_t end_excl, bool fill_zero)
+				off_t start, off_t end_excl)
 {
 	struct exfat *exfat = ei->exfat;
 	size_t len;
@@ -567,32 +567,22 @@ static int dump_bytes_to_stdout(struct exfat2img *ei,
 
 	while (start < end_excl) {
 		len = (size_t)MIN(end_excl - start, exfat->clus_size);
-		if (!fill_zero) {
-			ret = exfat_read(exfat->blk_dev->dev_fd,
-					 ei->dump_bdesc[0].buffer,
-					 len, start);
-			if (ret != (ssize_t)len) {
-				exfat_err("failed to read %llu bytes at %llu\n",
-					  (unsigned long long)len,
-					  (unsigned long long)start);
-				return -EIO;
-			}
+		ret = exfat_read(exfat->blk_dev->dev_fd,
+				 ei->dump_bdesc[0].buffer,
+				 len, start);
+		if (ret != (ssize_t)len) {
+			exfat_err("failed to read %llu bytes at %llu\n",
+				  (unsigned long long)len,
+				  (unsigned long long)start);
+			return -EIO;
+		}
 
-			ret = write(ei->out_fd, ei->dump_bdesc[0].buffer, len);
-			if (ret != (ssize_t)len) {
-				exfat_err("failed to write %llu bytes at %llu\n",
-					  (unsigned long long)len,
-					  (unsigned long long)start);
-				return -EIO;
-			}
-		} else {
-			ret = write(ei->out_fd, exfat->zero_cluster, len);
-			if (ret != (ssize_t)len) {
-				exfat_err("failed to write %llu bytes at %llu\n",
-					  (unsigned long long)len,
-					  (unsigned long long)start);
-				return -EIO;
-			}
+		ret = write(ei->out_fd, ei->dump_bdesc[0].buffer, len);
+		if (ret != (ssize_t)len) {
+			exfat_err("failed to write %llu bytes at %llu\n",
+				  (unsigned long long)len,
+				  (unsigned long long)start);
+			return -EIO;
 		}
 
 		start += len;
@@ -644,8 +634,7 @@ static int dump_clusters_to_stdout(struct exfat2img *ei,
 			start_off = exfat_c2o(ei->exfat, clu);
 			end_off_excl = exfat_c2o(ei->exfat, clu + cc_clu_count);
 
-			if (dump_bytes_to_stdout(ei, start_off, end_off_excl,
-						 false) < 0)
+			if (dump_bytes_to_stdout(ei, start_off, end_off_excl) < 0)
 				return -EIO;
 		} else {
 			ei->stdout_offset += (off_t)cc_clu_count * ei->exfat->clus_size;
@@ -665,7 +654,7 @@ static int dump_to_stdout(struct exfat2img *ei)
 
 	start_off = 0;
 	end_off = exfat_s2o(exfat, le32_to_cpu(exfat->bs->bsx.clu_offset));
-	if (dump_bytes_to_stdout(ei, start_off, end_off, false) < 0) {
+	if (dump_bytes_to_stdout(ei, start_off, end_off) < 0) {
 		exfat_err("failed to dump boot sectors and FAT tables\n");
 		return -EIO;
 	}
