@@ -359,9 +359,12 @@ int exfat_lookup_dentry_set(struct exfat *exfat, struct exfat_inode *parent,
 	int dentry_count, empty_dentry_count = 0;
 	int retval;
 
-	bd = exfat_alloc_buffer(exfat, 2);
-	if (!bd)
-		return -ENOMEM;
+	if (!exfat->lookup_buffer) {
+		exfat->lookup_buffer = exfat_alloc_buffer(exfat, 2);
+		if (!exfat->lookup_buffer)
+			return -ENOMEM;
+	}
+	bd = exfat->lookup_buffer;
 
 	retval = exfat_de_iter_init(&de_iter, exfat, parent, bd);
 	if (retval == EOF || retval)
@@ -441,8 +444,6 @@ out:
 		filter->out.file_offset = exfat_de_iter_file_offset(&de_iter);
 		filter->out.dev_offset = EOF;
 	}
-	if (bd)
-		exfat_free_buffer(bd, 2);
 	return retval;
 }
 

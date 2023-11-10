@@ -45,6 +45,7 @@ struct exfat {
 	unsigned int		disk_bitmap_size;
 	__u16			*upcase_table;
 	clus_t			start_clu;
+	struct buffer_desc	*lookup_buffer; /* for dentry set lookup */
 };
 
 struct exfat_dentry_loc {

@@ -117,6 +117,8 @@ void exfat_free_exfat(struct exfat *exfat)
 			free(exfat->upcase_table);
 		if (exfat->root)
 			exfat_free_inode(exfat->root);
+		if (exfat->lookup_buffer)
+			free(exfat->lookup_buffer);
 		free(exfat);
 	}
 }
