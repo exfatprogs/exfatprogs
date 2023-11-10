@@ -41,6 +41,7 @@
 #define MAX_EXFAT_DENTRIES	8388608
 #define MIN_FILE_DENTRIES	3
 #define MAX_NAME_DENTRIES	17
+#define MAX_EXT_DENTRIES	0xFF
 
 /* dentry types */
 #define MSDOS_DELETED		0xE5	/* deleted mark */

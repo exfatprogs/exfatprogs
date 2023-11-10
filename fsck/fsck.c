@@ -1544,7 +1544,7 @@ int main(int argc, char * const argv[])
 		goto err;
 	}
 
-	exfat_fsck.buffer_desc = exfat_alloc_buffer(exfat_fsck.exfat, 2);
+	exfat_fsck.buffer_desc = exfat_alloc_buffer(exfat_fsck.exfat);
 	if (!exfat_fsck.buffer_desc) {
 		ret = -ENOMEM;
 		goto err;
@@ -1604,7 +1604,7 @@ err:
 		exit_code = FSCK_EXIT_NO_ERRORS;
 
 	if (exfat_fsck.buffer_desc)
-		exfat_free_buffer(exfat_fsck.buffer_desc, 2);
+		exfat_free_buffer(exfat_fsck.exfat, exfat_fsck.buffer_desc);
 	if (exfat_fsck.exfat)
 		exfat_free_exfat(exfat_fsck.exfat);
 	close(bd.dev_fd);

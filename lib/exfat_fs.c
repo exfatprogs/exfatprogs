@@ -157,6 +157,9 @@ struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
 		goto err;
 	}
 
+	exfat->buffer_count = ((MAX_EXT_DENTRIES + 1) * DENTRY_SIZE) /
+		exfat_get_read_size(exfat) + 1;
+
 	exfat->start_clu = EXFAT_FIRST_CLUSTER;
 	return exfat;
 err:
@@ -164,17 +167,17 @@ err:
 	return NULL;
 }
 
-struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat, int count)
+struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat)
 {
 	struct buffer_desc *bd;
-	int i;
+	unsigned int i;
 	unsigned int read_size = exfat_get_read_size(exfat);
 
-	bd = calloc(count, sizeof(*bd));
+	bd = calloc(exfat->buffer_count, sizeof(*bd));
 	if (!bd)
 		return NULL;
 
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < exfat->buffer_count; i++) {
 		bd[i].buffer = malloc(read_size);
 		if (!bd[i].buffer)
 			goto err;
@@ -183,15 +186,15 @@ struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat, int count)
 	}
 	return bd;
 err:
-	exfat_free_buffer(bd, count);
+	exfat_free_buffer(exfat, bd);
 	return NULL;
 }
 
-void exfat_free_buffer(struct buffer_desc *bd, int count)
+void exfat_free_buffer(const struct exfat *exfat, struct buffer_desc *bd)
 {
-	int i;
+	unsigned int i;
 
-	for (i = 0; i < count; i++) {
+	for (i = 0; i < exfat->buffer_count; i++) {
 		if (bd[i].buffer)
 			free(bd[i].buffer);
 	}

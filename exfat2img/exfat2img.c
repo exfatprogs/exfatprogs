@@ -96,12 +96,12 @@ static void usage(const char *name)
 
 static void free_exfat2img(struct exfat2img *ei)
 {
+	if (ei->scan_bdesc)
+		exfat_free_buffer(ei->exfat, ei->scan_bdesc);
 	if (ei->exfat)
 		exfat_free_exfat(ei->exfat);
 	if (ei->dump_cluster)
 		free(ei->dump_cluster);
-	if (ei->scan_bdesc)
-		exfat_free_buffer(ei->scan_bdesc, 2);
 	if (ei->out_fd)
 		close(ei->out_fd);
 	if (ei->bdev.dev_fd)
@@ -124,7 +124,7 @@ static int create_exfat2img(struct exfat2img *ei,
 		goto err;
 	}
 
-	ei->scan_bdesc = exfat_alloc_buffer(ei->exfat, 2);
+	ei->scan_bdesc = exfat_alloc_buffer(ei->exfat);
 	if (!ei->scan_bdesc) {
 		err = -ENOMEM;
 		goto err;

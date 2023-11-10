@@ -45,6 +45,7 @@ struct exfat {
 	unsigned int		disk_bitmap_size;
 	__u16			*upcase_table;
 	clus_t			start_clu;
+	unsigned int		buffer_count;
 	struct buffer_desc	*lookup_buffer; /* for dentry set lookup */
 };
 
@@ -82,8 +83,8 @@ int exfat_resolve_path(struct path_resolve_ctx *ctx, struct exfat_inode *child);
 int exfat_resolve_path_parent(struct path_resolve_ctx *ctx,
 			      struct exfat_inode *parent, struct exfat_inode *child);
 
-struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat, int count);
-void exfat_free_buffer(struct buffer_desc *bd, int count);
+struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat);
+void exfat_free_buffer(const struct exfat *exfat, struct buffer_desc *bd);
 
 static inline unsigned int exfat_get_read_size(const struct exfat *exfat)
 {
