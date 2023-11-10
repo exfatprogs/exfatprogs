@@ -1545,9 +1545,7 @@ int main(int argc, char * const argv[])
 		goto err;
 	}
 
-	exfat_fsck.buffer_desc = exfat_alloc_buffer(2,
-						    exfat_fsck.exfat->clus_size,
-						    exfat_fsck.exfat->sect_size);
+	exfat_fsck.buffer_desc = exfat_alloc_buffer(exfat_fsck.exfat, 2);
 	if (!exfat_fsck.buffer_desc) {
 		ret = -ENOMEM;
 		goto err;

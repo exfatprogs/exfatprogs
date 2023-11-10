@@ -225,7 +225,7 @@ int exfat_de_iter_init(struct exfat_de_iter *iter, struct exfat *exfat,
 	iter->exfat = exfat;
 	iter->parent = dir;
 	iter->write_size = exfat->sect_size;
-	iter->read_size = exfat->clus_size <= 4*KB ? exfat->clus_size : 4*KB;
+	iter->read_size = exfat_get_read_size(exfat);
 	if (exfat->clus_size <= 32 * KB)
 		iter->ra_partial_size = MAX(4 * KB, exfat->clus_size / 2);
 	else
@@ -359,7 +359,7 @@ int exfat_lookup_dentry_set(struct exfat *exfat, struct exfat_inode *parent,
 	int dentry_count, empty_dentry_count = 0;
 	int retval;
 
-	bd = exfat_alloc_buffer(2, exfat->clus_size, exfat->sect_size);
+	bd = exfat_alloc_buffer(exfat, 2);
 	if (!bd)
 		return -ENOMEM;
 

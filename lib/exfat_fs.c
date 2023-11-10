@@ -165,21 +165,21 @@ err:
 	return NULL;
 }
 
-struct buffer_desc *exfat_alloc_buffer(int count,
-				       unsigned int clu_size, unsigned int sect_size)
+struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat, int count)
 {
 	struct buffer_desc *bd;
 	int i;
+	unsigned int read_size = exfat_get_read_size(exfat);
 
 	bd = (struct buffer_desc *)calloc(sizeof(*bd), count);
 	if (!bd)
 		return NULL;
 
 	for (i = 0; i < count; i++) {
-		bd[i].buffer = (char *)malloc(clu_size);
+		bd[i].buffer = (char *)malloc(read_size);
 		if (!bd[i].buffer)
 			goto err;
-		bd[i].dirty = (char *)calloc(clu_size / sect_size, 1);
+		bd[i].dirty = (char *)calloc(read_size / exfat->sect_size, 1);
 		if (!bd[i].dirty)
 			goto err;
 	}

@@ -81,7 +81,11 @@ int exfat_resolve_path(struct path_resolve_ctx *ctx, struct exfat_inode *child);
 int exfat_resolve_path_parent(struct path_resolve_ctx *ctx,
 			      struct exfat_inode *parent, struct exfat_inode *child);
 
-struct buffer_desc *exfat_alloc_buffer(int count,
-				       unsigned int clu_size, unsigned int sect_size);
+struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat, int count);
 void exfat_free_buffer(struct buffer_desc *bd, int count);
+
+static inline unsigned int exfat_get_read_size(const struct exfat *exfat)
+{
+	return MIN(exfat->clus_size, 4 * KB);
+}
 #endif

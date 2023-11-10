@@ -124,9 +124,7 @@ static int create_exfat2img(struct exfat2img *ei,
 		goto err;
 	}
 
-	ei->scan_bdesc = exfat_alloc_buffer(2,
-					    ei->exfat->clus_size,
-					    ei->exfat->sect_size);
+	ei->scan_bdesc = exfat_alloc_buffer(ei->exfat, 2);
 	if (!ei->scan_bdesc) {
 		err = -ENOMEM;
 		goto err;
