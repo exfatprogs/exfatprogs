@@ -508,35 +508,21 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
 static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
-	int nbytes;
+	int ret;
 	unsigned long long total_written = 0;
-	char *buf;
-	unsigned int chunk_size = ui->cluster_size;
 	unsigned long long size;
 
 	if (ui->quick)
-		size = finfo.root_byte_off + chunk_size;
+		size = finfo.root_byte_off + ui->cluster_size;
 	else
 		size = bd->size;
 
-	buf = malloc(chunk_size);
-	if (!buf)
-		return -1;
+	ret = exfat_write_zero(bd->dev_fd, size, 0);
+	if (ret) {
+		exfat_err("write failed(errno : %d)\n", errno);
+		return ret;
+	}
 
-	memset(buf, 0, chunk_size);
-	lseek(bd->dev_fd, 0, SEEK_SET);
-	do {
-
-		nbytes = write(bd->dev_fd, buf, chunk_size);
-		if (nbytes <= 0) {
-			if (nbytes < 0)
-				exfat_err("write failed(errno : %d)\n", errno);
-			break;
-		}
-		total_written += nbytes;
-	} while (total_written < size);
-
-	free(buf);
 	exfat_debug("zero out written size : %llu, disk size : %llu\n",
 		total_written, bd->size);
 	return 0;

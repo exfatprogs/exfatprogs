@@ -117,8 +117,6 @@ void exfat_free_exfat(struct exfat *exfat)
 			free(exfat->upcase_table);
 		if (exfat->root)
 			exfat_free_inode(exfat->root);
-		if (exfat->zero_cluster)
-			free(exfat->zero_cluster);
 		free(exfat);
 	}
 }
@@ -157,12 +155,6 @@ struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
 		calloc(1, EXFAT_BITMAP_SIZE(exfat->clus_count));
 	if (!exfat->disk_bitmap) {
 		exfat_err("failed to allocate bitmap\n");
-		goto err;
-	}
-
-	exfat->zero_cluster = calloc(1, exfat->clus_size);
-	if (!exfat->zero_cluster) {
-		exfat_err("failed to allocate a zero-filled cluster buffer\n");
 		goto err;
 	}
 

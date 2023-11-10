@@ -841,9 +841,8 @@ static int exfat_alloc_cluster(struct exfat *exfat, struct exfat_inode *inode,
 		return -EIO;
 
 	/* zero out the new cluster */
-	if (exfat_write(exfat->blk_dev->dev_fd, exfat->zero_cluster,
-			exfat->clus_size, exfat_c2o(exfat, *new_clu)) !=
-	    (ssize_t)exfat->clus_size) {
+	if (exfat_write_zero(exfat->blk_dev->dev_fd, exfat->clus_size,
+				exfat_c2o(exfat, *new_clu))) {
 		exfat_err("failed to fill new cluster with zeroes\n");
 		return -EIO;
 	}

@@ -218,6 +218,24 @@ ssize_t exfat_write(int fd, void *buf, size_t size, off_t offset)
 	return pwrite(fd, buf, size, offset);
 }
 
+ssize_t exfat_write_zero(int fd, size_t size, off_t offset)
+{
+	const char zero_buf[4 * KB] = {0};
+
+	lseek(fd, offset, SEEK_SET);
+
+	while (size > 0) {
+		int iter_size = MIN(size, sizeof(zero_buf));
+
+		if (iter_size != write(fd, zero_buf, iter_size))
+			return -EIO;
+
+		size -= iter_size;
+	}
+
+	return 0;
+}
+
 size_t exfat_utf16_len(const __le16 *str, size_t max_size)
 {
 	size_t i = 0;
