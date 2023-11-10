@@ -113,6 +113,9 @@ typedef __u32	bitmap_t;
 #define BITMAP_SET(bmap, bit)	\
 	(((bitmap_t *)(bmap))[BIT_ENTRY(bit)] |= BIT_MASK(bit))
 
+#define BITMAP_CLEAR(bmap, bit)	\
+	(((bitmap_t *)(bmap))[BIT_ENTRY(bit)] &= ~BIT_MASK(bit))
+
 static inline bool exfat_bitmap_get(char *bmap, clus_t c)
 {
 	clus_t cc = c - EXFAT_FIRST_CLUSTER;

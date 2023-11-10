@@ -64,7 +64,7 @@ struct buffer_desc {
 	__u32		p_clus;
 	unsigned int	offset;
 	char		*buffer;
-	char		*dirty;
+	char		dirty[EXFAT_BITMAP_SIZE(4 * KB / 512)];
 };
 
 struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs);

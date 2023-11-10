@@ -37,7 +37,7 @@ static ssize_t write_block(struct exfat_de_iter *iter, unsigned int block)
 	desc = &iter->buffer_desc[block & 0x01];
 
 	for (i = 0; i < iter->read_size / iter->write_size; i++) {
-		if (desc->dirty[i]) {
+		if (BITMAP_GET(desc->dirty, i)) {
 			device_offset = exfat_c2o(exfat, desc->p_clus) +
 				desc->offset;
 			if (exfat_write(exfat->blk_dev->dev_fd,
@@ -46,7 +46,7 @@ static ssize_t write_block(struct exfat_de_iter *iter, unsigned int block)
 					device_offset + i * iter->write_size)
 					!= (ssize_t)iter->write_size)
 				return -EIO;
-			desc->dirty[i] = 0;
+			BITMAP_CLEAR(desc->dirty, i);
 		}
 	}
 	return 0;
@@ -300,7 +300,7 @@ int exfat_de_iter_get_dirty(struct exfat_de_iter *iter,
 		block = (unsigned int)(next_file_offset / iter->read_size);
 		sect_idx = (int)((next_file_offset % iter->read_size) /
 				iter->write_size);
-		iter->buffer_desc[block & 0x01].dirty[sect_idx] = 1;
+		BITMAP_SET(iter->buffer_desc[block & 0x01].dirty, sect_idx);
 	}
 
 	return ret;

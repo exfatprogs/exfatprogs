@@ -181,9 +181,8 @@ struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat, int count)
 		bd[i].buffer = (char *)malloc(read_size);
 		if (!bd[i].buffer)
 			goto err;
-		bd[i].dirty = (char *)calloc(read_size / exfat->sect_size, 1);
-		if (!bd[i].dirty)
-			goto err;
+
+		memset(&bd[i].dirty, 0, sizeof(bd[i].dirty));
 	}
 	return bd;
 err:
@@ -198,8 +197,6 @@ void exfat_free_buffer(struct buffer_desc *bd, int count)
 	for (i = 0; i < count; i++) {
 		if (bd[i].buffer)
 			free(bd[i].buffer);
-		if (bd[i].dirty)
-			free(bd[i].dirty);
 	}
 	free(bd);
 }
