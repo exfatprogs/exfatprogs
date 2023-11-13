@@ -1105,9 +1105,7 @@ static int read_children(struct exfat_fsck *fsck, struct exfat_inode *dir)
 			if (IS_EXFAT_DELETED(dentry->type))
 				break;
 			if (repair_file_ask(de_iter, NULL, ER_DE_UNKNOWN,
-					    "unknown entry type %#x at %07" PRIx64,
-					    dentry->type,
-					    exfat_de_iter_file_offset(de_iter))) {
+					    "unknown entry type %#x", dentry->type)) {
 				struct exfat_dentry *dentry;
 
 				exfat_de_iter_get_dirty(de_iter, 0, &dentry);
