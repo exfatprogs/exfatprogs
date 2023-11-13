@@ -105,7 +105,6 @@ int main(int argc, char *argv[])
 
 		exfat = exfat_alloc_exfat(&bd, bs);
 		if (!exfat) {
-			free(bs);
 			ret = -ENOMEM;
 			goto close_fd_out;
 		}
