@@ -762,7 +762,7 @@ static ssize_t read_stream(int fd, void *buf, size_t len)
 
 static int restore_from_stdin(struct exfat2img *ei)
 {
-	int in_fd, ret;
+	int in_fd, ret = 0;
 	unsigned char cc;
 	unsigned int clu, end_clu;
 	unsigned int cc_clu_count;
