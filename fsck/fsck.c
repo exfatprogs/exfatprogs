@@ -102,7 +102,7 @@ static void usage(char *name)
 				 exfat_de_iter_device_offset(iter));	\
 })
 
-static int check_clus_chain(struct exfat_de_iter *de_iter,
+static int check_clus_chain(struct exfat_de_iter *de_iter, int stream_idx,
 			    struct exfat_inode *node)
 {
 	struct exfat *exfat = de_iter->exfat;
@@ -220,8 +220,8 @@ truncate_file:
 	if (!exfat_heap_clus(exfat, prev))
 		node->first_clus = EXFAT_FREE_CLUSTER;
 
-	exfat_de_iter_get_dirty(de_iter, 1, &stream_de);
-	if (count * exfat->clus_size <
+	exfat_de_iter_get_dirty(de_iter, stream_idx, &stream_de);
+	if (stream_idx == 1 && count * exfat->clus_size <
 	    le64_to_cpu(stream_de->stream_valid_size))
 		stream_de->stream_valid_size = cpu_to_le64(
 							   count * exfat->clus_size);
@@ -597,7 +597,7 @@ static int check_inode(struct exfat_de_iter *iter, struct exfat_inode *node)
 	uint16_t checksum;
 	bool valid = true;
 
-	ret = check_clus_chain(iter, node);
+	ret = check_clus_chain(iter, 1, node);
 	if (ret < 0)
 		return ret;
 
@@ -737,8 +737,8 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 {
 	struct exfat_dentry *file_de, *stream_de, *dentry;
 	struct exfat_inode *node = NULL;
-	int i, ret, name_de_count;
-	bool need_delete = false;
+	int i, j, ret, name_de_count;
+	bool need_delete = false, need_copy_up = false;
 	uint16_t checksum;
 
 	ret = exfat_de_iter_get(iter, 0, &file_de);
@@ -818,16 +818,62 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 		}
 	}
 
-	for (; i <= file_de->file_num_ext; i++) {
+	for (j = i; i <= file_de->file_num_ext; i++) {
 		exfat_de_iter_get(iter, i, &dentry);
 		if (dentry->type == EXFAT_VENDOR_EXT ||
 		    dentry->type == EXFAT_VENDOR_ALLOC) {
-			continue;
+			char zeroes[EXFAT_GUID_LEN] = {0};
+			/*
+			 * Vendor GUID should not be zero, But Windows fsck
+			 * also does not check and fix it.
+			 */
+			if (!memcmp(dentry->dentry.vendor_ext.guid,
+				    zeroes, EXFAT_GUID_LEN))
+				repair_file_ask(iter, NULL, ER_VENDOR_GUID,
+						"Vendor Extension has zero filled GUID");
+			if (dentry->type == EXFAT_VENDOR_ALLOC) {
+				struct exfat_inode *vendor_node;
+
+				/* verify cluster chain */
+				vendor_node = exfat_alloc_inode(0);
+				if (!vendor_node) {
+					*skip_dentries = i + i;
+					goto skip_dset;
+				}
+				vendor_node->first_clus =
+					le32_to_cpu(dentry->dentry.vendor_alloc.start_clu);
+				vendor_node->is_contiguous = ((dentry->dentry.vendor_alloc.flags
+							       & EXFAT_SF_CONTIGUOUS) != 0);
+				vendor_node->size =
+					le64_to_cpu(dentry->dentry.vendor_alloc.size);
+				if (check_clus_chain(iter, i, vendor_node) < 0) {
+					exfat_free_inode(vendor_node);
+					*skip_dentries = i + 1;
+					goto skip_dset;
+				}
+				if (vendor_node->size == 0 &&
+				    vendor_node->is_contiguous) {
+					exfat_de_iter_get_dirty(iter, i, &dentry);
+					dentry->stream_flags &= ~EXFAT_SF_CONTIGUOUS;
+
+				}
+				exfat_free_inode(vendor_node);
+			}
+
+			if (need_copy_up) {
+				struct exfat_dentry *src_de;
+
+				exfat_de_iter_get_dirty(iter, j, &src_de);
+				memcpy(src_de, dentry, sizeof(struct exfat_dentry));
+			}
+			j++;
 		} else {
-			if (IS_EXFAT_DELETED(dentry->type) ||
-			    repair_file_ask(iter, NULL, ER_DE_UNKNOWN,
-					    "unknown entry type %#x", dentry->type)) {
-				break;
+			if (need_copy_up) {
+				continue;
+			} else if (repair_file_ask(iter, NULL, ER_DE_UNKNOWN,
+						  "unknown entry type %#x", dentry->type)) {
+				j = i;
+				need_copy_up = true;
 			} else {
 				*skip_dentries = i + 1;
 				goto skip_dset;
@@ -855,12 +901,16 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 		}
 	}
 
-	if (file_de->file_num_ext != i - 1 &&
-	    repair_file_ask(iter, node, ER_DE_SECONDARY_COUNT,
-			    "SecondaryCount %d is different with %d",
-			    file_de->file_num_ext, i - 1)) {
-		exfat_de_iter_get_dirty(iter, 0, &file_de);
-		file_de->file_num_ext = i - 1;
+	if (file_de->file_num_ext != j - 1) {
+		if (repair_file_ask(iter, node, ER_DE_SECONDARY_COUNT,
+				    "SecondaryCount %d is different with %d",
+				    file_de->file_num_ext, j - 1)) {
+			exfat_de_iter_get_dirty(iter, 0, &file_de);
+			file_de->file_num_ext = j - 1;
+		} else {
+			*skip_dentries = file_de->file_num_ext + 1;
+			goto skip_dset;
+		}
 	}
 
 	*skip_dentries = (file_de->file_num_ext + 1);

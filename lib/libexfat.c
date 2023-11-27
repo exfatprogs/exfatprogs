@@ -527,7 +527,7 @@ static int set_guid(__u8 *guid, const char *input)
 	int i, j, zero_len = 0;
 	int len = strlen(input);
 
-	if (len != VOLUME_GUID_LEN * 2 && len != VOLUME_GUID_LEN * 2 + 4) {
+	if (len != EXFAT_GUID_LEN * 2 && len != EXFAT_GUID_LEN * 2 + 4) {
 		exfat_err("invalid format for volume guid\n");
 		return -EINVAL;
 	}
@@ -541,7 +541,7 @@ static int set_guid(__u8 *guid, const char *input)
 			ch -= 'a' - 0xA;
 		else if (ch >= 'A' && ch <= 'F')
 			ch -= 'A' - 0xA;
-		else if (ch == '-' && len == VOLUME_GUID_LEN * 2 + 4 &&
+		else if (ch == '-' && len == EXFAT_GUID_LEN * 2 + 4 &&
 			 (i == 8 || i == 13 || i == 18 || i == 23))
 			continue;
 		else {
@@ -560,7 +560,7 @@ static int set_guid(__u8 *guid, const char *input)
 			zero_len++;
 	}
 
-	if (zero_len == VOLUME_GUID_LEN * 2) {
+	if (zero_len == EXFAT_GUID_LEN * 2) {
 		exfat_err("%s is invalid for volume GUID\n", input);
 		return -EINVAL;
 	}
