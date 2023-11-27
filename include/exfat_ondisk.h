@@ -61,6 +61,8 @@
 #define EXFAT_STREAM		0xC0	/* stream entry */
 #define EXFAT_NAME		0xC1	/* file name entry */
 #define EXFAT_ACL		0xC2	/* stream entry */
+#define EXFAT_VENDOR_EXT	0xE0
+#define EXFAT_VENDOR_ALLOC	0xE1
 
 /* checksum types */
 #define CS_DIR_ENTRY		0

@@ -737,7 +737,7 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 {
 	struct exfat_dentry *file_de, *stream_de, *dentry;
 	struct exfat_inode *node = NULL;
-	int i, ret;
+	int i, ret, name_de_count;
 	bool need_delete = false;
 	uint16_t checksum;
 
@@ -780,17 +780,22 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 	if (!node)
 		return -ENOMEM;
 
-	for (i = 2; i <= MIN(file_de->file_num_ext, 1 + MAX_NAME_DENTRIES); i++) {
+	name_de_count = DIV_ROUND_UP(stream_de->stream_name_len, ENTRY_NAME_MAX);
+	for (i = 2; i <= MIN(name_de_count + 1, file_de->file_num_ext); i++) {
 		ret = exfat_de_iter_get(iter, i, &dentry);
 		if (ret || dentry->type != EXFAT_NAME) {
-			if (i > 2 && repair_file_ask(iter, NULL, ER_DE_NAME,
-						     "failed to get name dentry")) {
-				exfat_de_iter_get_dirty(iter, 0, &file_de);
-				file_de->file_num_ext = i - 1;
+			if (repair_file_ask(iter, NULL, ER_DE_NAME,
+					    "failed to get name dentry")) {
+				if (i == 2) {
+					need_delete = 1;
+					*skip_dentries = i + 1;
+					goto skip_dset;
+				}
 				break;
+			} else {
+				*skip_dentries = i + 1;
+				goto skip_dset;
 			}
-			*skip_dentries = i + 1;
-			goto skip_dset;
 		}
 
 		memcpy(node->name +
@@ -813,6 +818,23 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 		}
 	}
 
+	for (; i <= file_de->file_num_ext; i++) {
+		exfat_de_iter_get(iter, i, &dentry);
+		if (dentry->type == EXFAT_VENDOR_EXT ||
+		    dentry->type == EXFAT_VENDOR_ALLOC) {
+			continue;
+		} else {
+			if (IS_EXFAT_DELETED(dentry->type) ||
+			    repair_file_ask(iter, NULL, ER_DE_UNKNOWN,
+					    "unknown entry type %#x", dentry->type)) {
+				break;
+			} else {
+				*skip_dentries = i + 1;
+				goto skip_dset;
+			}
+		}
+	}
+
 	node->first_clus = le32_to_cpu(stream_de->stream_start_clu);
 	node->is_contiguous =
 		((stream_de->stream_flags & EXFAT_SF_CONTIGUOUS) != 0);
@@ -831,6 +853,14 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 			*skip_dentries = file_de->file_num_ext + 1;
 			goto skip_dset;
 		}
+	}
+
+	if (file_de->file_num_ext != i - 1 &&
+	    repair_file_ask(iter, node, ER_DE_SECONDARY_COUNT,
+			    "SecondaryCount %d is different with %d",
+			    file_de->file_num_ext, i - 1)) {
+		exfat_de_iter_get_dirty(iter, 0, &file_de);
+		file_de->file_num_ext = i - 1;
 	}
 
 	*skip_dentries = (file_de->file_num_ext + 1);
