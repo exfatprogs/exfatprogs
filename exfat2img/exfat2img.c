@@ -890,7 +890,10 @@ static int restore_from_stdin(struct exfat2img *ei)
 		}
 	}
 out:
-	fsync(ei->out_fd);
+	if (fsync(ei->out_fd)) {
+		exfat_err("failed to fsync: %d\n", errno);
+		ret = -EIO;
+	}
 	exfat_free_buffer(ei->dump_bdesc, 2);
 	return ret;
 }

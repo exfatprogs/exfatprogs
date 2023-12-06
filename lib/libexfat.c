@@ -981,6 +981,10 @@ int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs)
 	unsigned int sect_size, clu_size;
 
 	pbr = malloc(sizeof(struct pbr));
+	if (!pbr) {
+		exfat_err("failed to allocate memory\n");
+		return -ENOMEM;
+	}
 
 	if (exfat_read(bdev->dev_fd, pbr, sizeof(*pbr), 0) !=
 	    (ssize_t)sizeof(*pbr)) {

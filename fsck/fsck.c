@@ -1248,7 +1248,6 @@ static int exfat_root_dir_check(struct exfat *exfat)
 	err = exfat_read_volume_label(exfat);
 	if (err && err != EOF)
 		exfat_err("failed to read volume label\n");
-	err = 0;
 
 	err = read_bitmap(exfat);
 	if (err) {
