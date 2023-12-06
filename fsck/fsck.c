@@ -675,6 +675,7 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 	struct exfat_dentry *stream_de;
 	size_t name_len;
 	__u16 hash;
+	int ret = 0;
 
 	exfat_de_iter_get(iter, 1, &stream_de);
 
@@ -684,6 +685,7 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 				    "the name length of a file is wrong")) {
 			exfat_de_iter_get_dirty(iter, 1, &stream_de);
 			stream_de->stream_name_len = (__u8)name_len;
+			ret = 1;
 		} else {
 			return -EINVAL;
 		}
@@ -695,20 +697,18 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 				    "the name hash of a file is wrong")) {
 			exfat_de_iter_get_dirty(iter, 1, &stream_de);
 			stream_de->stream_name_hash = cpu_to_le16(hash);
+			ret = 1;
 		} else {
 			return -EINVAL;
 		}
 	}
 
 	if (BITMAP_GET(iter->name_hash_bitmap, hash)) {
-		int ret = handle_duplicated_filename(iter, inode);
-
-		if (ret)
-			return ret;
+		ret = handle_duplicated_filename(iter, inode);
 	} else
 		BITMAP_SET(iter->name_hash_bitmap, hash);
 
-	return 0;
+	return ret;
 }
 
 const __le16 MSDOS_DOT[ENTRY_NAME_MAX] = {cpu_to_le16(46), 0, };
@@ -804,9 +804,14 @@ static int read_file_dentry_set(struct exfat_de_iter *iter,
 	}
 
 	ret = check_name_dentry_set(iter, node);
-	if (ret) {
+	if (ret < 0) {
 		*skip_dentries = file_de->file_num_ext + 1;
 		goto skip_dset;
+	} else if (ret) {
+		exfat_de_iter_get(iter, 1, &stream_de);
+		if (DIV_ROUND_UP(stream_de->stream_name_len, ENTRY_NAME_MAX) !=
+		    name_de_count)
+			i = DIV_ROUND_UP(stream_de->stream_name_len, ENTRY_NAME_MAX) + 2;
 	}
 
 	if (file_de->file_num_ext == 2 && stream_de->stream_name_len <= 2) {

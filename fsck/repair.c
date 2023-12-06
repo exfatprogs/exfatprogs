@@ -246,7 +246,7 @@ ask_again:
 		char *rename = NULL;
 		__u16 hash;
 		struct exfat_dentry *dentry;
-		int ret, i;
+		int ret;
 
 		switch (num) {
 		case 1:
@@ -281,15 +281,8 @@ ask_again:
 		exfat_de_iter_get_dirty(iter, 1, &dentry);
 		dentry->stream_name_len = (__u8)ret;
 		dentry->stream_name_hash = cpu_to_le16(hash);
+		return 1;
 
-		exfat_de_iter_get_dirty(iter, 0, &dentry);
-		i = dentry->file_num_ext;
-		dentry->file_num_ext = 2;
-
-		for (; i > 2; i--) {
-			exfat_de_iter_get_dirty(iter, i, &dentry);
-			dentry->type &= EXFAT_DELETE;
-		}
 	}
 
 	return 0;
