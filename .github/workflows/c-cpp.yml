@@ -32,8 +32,15 @@ jobs:
         sudo make install > /dev/null
     - name: run fsck repair testcases
       run: |
+        ulimit -c unlimited
+        sudo bash -c 'echo "/cores/core.%e.%t.%p" > /proc/sys/kernel/core_pattern'
+        sudo chmod -R +rwx /cores/*
         cd tests
         sudo ./test_fsck.sh
+    - uses: actions/upload-artifact@master # capture all crashes as build artifacts
+      with: |
+        name: crashes
+        path: /cores
     - name: create file/director test
       run: |
         cd linux-exfat-oot
