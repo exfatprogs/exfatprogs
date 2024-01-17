@@ -373,7 +373,7 @@ off_t exfat_get_root_entry_offset(struct exfat_blk_dev *bd)
 	unsigned int cluster_size, sector_size;
 	off_t root_clu_off;
 
-	bs = (struct pbr *)malloc(EXFAT_MAX_SECTOR_SIZE);
+	bs = malloc(EXFAT_MAX_SECTOR_SIZE);
 	if (!bs) {
 		exfat_err("failed to allocate memory\n");
 		return -ENOMEM;

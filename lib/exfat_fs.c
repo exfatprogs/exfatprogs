@@ -22,7 +22,7 @@ struct exfat_inode *exfat_alloc_inode(__u16 attr)
 	int size;
 
 	size = offsetof(struct exfat_inode, name) + NAME_BUFFER_SIZE;
-	node = (struct exfat_inode *)calloc(1, size);
+	node = calloc(1, size);
 	if (!node) {
 		exfat_err("failed to allocate exfat_node\n");
 		return NULL;
@@ -127,7 +127,7 @@ struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
 {
 	struct exfat *exfat;
 
-	exfat = (struct exfat *)calloc(1, sizeof(*exfat));
+	exfat = calloc(1, sizeof(*exfat));
 	if (!exfat)
 		return NULL;
 
@@ -139,22 +139,19 @@ struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
 	exfat->sect_size = EXFAT_SECTOR_SIZE(bs);
 
 	/* TODO: bitmap could be very large. */
-	exfat->alloc_bitmap = (char *)calloc(1,
-			EXFAT_BITMAP_SIZE(exfat->clus_count));
+	exfat->alloc_bitmap = calloc(1, EXFAT_BITMAP_SIZE(exfat->clus_count));
 	if (!exfat->alloc_bitmap) {
 		exfat_err("failed to allocate bitmap\n");
 		goto err;
 	}
 
-	exfat->ohead_bitmap =
-		calloc(1, EXFAT_BITMAP_SIZE(exfat->clus_count));
+	exfat->ohead_bitmap = calloc(1, EXFAT_BITMAP_SIZE(exfat->clus_count));
 	if (!exfat->ohead_bitmap) {
 		exfat_err("failed to allocate bitmap\n");
 		goto err;
 	}
 
-	exfat->disk_bitmap =
-		calloc(1, EXFAT_BITMAP_SIZE(exfat->clus_count));
+	exfat->disk_bitmap = calloc(1, EXFAT_BITMAP_SIZE(exfat->clus_count));
 	if (!exfat->disk_bitmap) {
 		exfat_err("failed to allocate bitmap\n");
 		goto err;
@@ -173,12 +170,12 @@ struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat, int count)
 	int i;
 	unsigned int read_size = exfat_get_read_size(exfat);
 
-	bd = (struct buffer_desc *)calloc(count, sizeof(*bd));
+	bd = calloc(count, sizeof(*bd));
 	if (!bd)
 		return NULL;
 
 	for (i = 0; i < count; i++) {
-		bd[i].buffer = (char *)malloc(read_size);
+		bd[i].buffer = malloc(read_size);
 		if (!bd[i].buffer)
 			goto err;
 

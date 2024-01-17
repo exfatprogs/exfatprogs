@@ -373,7 +373,7 @@ static int read_boot_region(struct exfat_blk_dev *bd, struct pbr **pbr,
 	int ret = -EINVAL;
 
 	*pbr = NULL;
-	bs = (struct pbr *)malloc(sizeof(struct pbr));
+	bs = malloc(sizeof(struct pbr));
 	if (!bs) {
 		exfat_err("failed to allocate memory\n");
 		return -ENOMEM;
@@ -987,7 +987,7 @@ static int read_upcase_table(struct exfat *exfat)
 		goto out;
 	}
 
-	upcase = (__le16 *)malloc(size);
+	upcase = malloc(size);
 	if (!upcase) {
 		exfat_err("failed to allocate upcase table\n");
 		retval = -ENOMEM;
