@@ -482,7 +482,7 @@ int exfat_set_volume_label(struct exfat *exfat, char *label_input)
 		dcount = filter.out.dentry_count;
 		memset(pvol->vol_label, 0, sizeof(pvol->vol_label));
 	} else {
-		pvol = calloc(sizeof(struct exfat_dentry), 1);
+		pvol = calloc(1, sizeof(struct exfat_dentry));
 		if (!pvol)
 			return -ENOMEM;
 

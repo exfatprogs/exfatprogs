@@ -1016,8 +1016,7 @@ static int read_upcase_table(struct exfat *exfat)
 			       DIV_ROUND_UP(le64_to_cpu(dentry->upcase_size),
 					    exfat->clus_size));
 
-	exfat->upcase_table = calloc(1,
-				     sizeof(uint16_t) * EXFAT_UPCASE_TABLE_CHARS);
+	exfat->upcase_table = calloc(EXFAT_UPCASE_TABLE_CHARS, sizeof(uint16_t));
 	if (!exfat->upcase_table) {
 		retval = -EIO;
 		goto out;

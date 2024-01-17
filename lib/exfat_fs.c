@@ -173,7 +173,7 @@ struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat, int count)
 	int i;
 	unsigned int read_size = exfat_get_read_size(exfat);
 
-	bd = (struct buffer_desc *)calloc(sizeof(*bd), count);
+	bd = (struct buffer_desc *)calloc(count, sizeof(*bd));
 	if (!bd)
 		return NULL;
 

@@ -614,7 +614,7 @@ int exfat_build_file_dentry_set(struct exfat *exfat, const char *name,
 
 	name_len = retval / 2;
 	dcount = 2 + DIV_ROUND_UP(name_len, ENTRY_NAME_MAX);
-	dset = calloc(1, dcount * DENTRY_SIZE);
+	dset = calloc(dcount, DENTRY_SIZE);
 	if (!dset)
 		return -ENOMEM;
 
