@@ -371,6 +371,7 @@ static int read_boot_region(struct exfat_blk_dev *bd, struct pbr **pbr,
 {
 	struct pbr *bs;
 	int ret = -EINVAL;
+	unsigned long long clu_max_count;
 
 	*pbr = NULL;
 	bs = (struct pbr *)malloc(sizeof(struct pbr));
@@ -434,12 +435,12 @@ static int read_boot_region(struct exfat_blk_dev *bd, struct pbr **pbr,
 		goto err;
 	}
 
-	if (le32_to_cpu(bs->bsx.clu_count) * EXFAT_CLUSTER_SIZE(bs) >
-			bd->size) {
+	clu_max_count = (le64_to_cpu(bs->bsx.vol_length) - le32_to_cpu(bs->bsx.clu_offset)) >> bs->bsx.sect_per_clus_bits;
+	if (le32_to_cpu(bs->bsx.clu_count) > clu_max_count) {
 		if (verbose)
-			exfat_err("too large cluster count: %u, expected: %u\n",
+			exfat_err("too large cluster count: %u, expected: %llu\n",
 				  le32_to_cpu(bs->bsx.clu_count),
-				  bd->num_clusters);
+				  MIN(clu_max_count, EXFAT_MAX_NUM_CLUSTER));
 		goto err;
 	}
 
