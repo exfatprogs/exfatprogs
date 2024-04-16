@@ -312,15 +312,27 @@ static int exfat_create_fat_table(struct exfat_blk_dev *bd,
 static int exfat_create_bitmap(struct exfat_blk_dev *bd)
 {
 	char *bitmap;
-	unsigned int i, nbytes;
+	unsigned int full_bytes, rem_bits, zero_offset;
+	unsigned int nbytes;
 
-	bitmap = calloc(round_up(finfo.bitmap_byte_len, sizeof(bitmap_t)),
-			sizeof(*bitmap));
+	bitmap = malloc(finfo.bitmap_byte_len);
 	if (!bitmap)
 		return -1;
 
-	for (i = EXFAT_FIRST_CLUSTER; i < finfo.used_clu_cnt; i++)
-		exfat_bitmap_set(bitmap, i);
+	full_bytes = finfo.used_clu_cnt / 8;
+	rem_bits = finfo.used_clu_cnt % 8;
+	zero_offset = full_bytes;
+
+	memset(bitmap, 0xff, full_bytes);
+
+	if (rem_bits != 0) {
+		bitmap[full_bytes] = (1 << rem_bits) - 1;
+		++zero_offset;
+	}
+
+	if (zero_offset < finfo.bitmap_byte_len)
+		memset(bitmap + zero_offset, 0, finfo.bitmap_byte_len - zero_offset);
+
 
 	nbytes = pwrite(bd->dev_fd, bitmap, finfo.bitmap_byte_len, finfo.bitmap_byte_off);
 	if (nbytes != finfo.bitmap_byte_len) {
