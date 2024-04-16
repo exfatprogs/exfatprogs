@@ -1,0 +1,50 @@
+*.o
+*.a
+compile_commands.json
+checkpatch.pl
+.cache
+
+# http://www.gnu.org/software/automake
+
+Makefile.in
+Makefile
+/ar-lib
+/mdate-sh
+/py-compile
+/test-driver
+/ylwrap
+.deps/
+.dirstamp
+
+# http://www.gnu.org/software/autoconf
+
+autom4te.cache
+/autoscan.log
+/autoscan-*.log
+/aclocal.m4
+/config.cache
+/config.h.in
+/config.h
+/config.log
+/config.status
+/configure
+/configure.scan
+/stamp-h1
+/build-aux
+
+# https://www.gnu.org/software/libtool/
+
+/libtool
+
+# http://www.gnu.org/software/m4/
+
+/m4
+
+# Binaries
+
+/dump/dump.exfat
+/exfat2img/exfat2img
+/fsck/fsck.exfat
+/label/exfatlabel
+/mkfs/mkfs.exfat
+/tune/tune.exfat
