@@ -386,6 +386,7 @@ static void usage(void)
 	fputs("Usage: mkfs.exfat\n"
 		"\t-L | --volume-label=label                              Set volume label\n"
 		"\t-U | --volume-guid=guid                                Set volume GUID\n"
+		"\t-s | --sector-size=size(or suffixed by 'K')            Specify sector size\n"
 		"\t-c | --cluster-size=size(or suffixed by 'K' or 'M')    Specify cluster size\n"
 		"\t-b | --boundary-align=size(or suffixed by 'K' or 'M')  Specify boundary alignment\n"
 		"\t     --pack-bitmap                                     Move bitmap into FAT segment\n"
@@ -404,6 +405,7 @@ static void usage(void)
 static const struct option opts[] = {
 	{"volume-label",	required_argument,	NULL,	'L' },
 	{"volume-guid",		required_argument,	NULL,	'U' },
+	{"sector-size",		required_argument,	NULL,	's' },
 	{"cluster-size",	required_argument,	NULL,	'c' },
 	{"boundary-align",	required_argument,	NULL,	'b' },
 	{"pack-bitmap",		no_argument,		NULL,	PACK_BITMAP },
@@ -615,7 +617,7 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "n:L:U:c:b:fVqvh", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:fVqvh", opts, NULL)) != EOF)
 		switch (c) {
 		/*
 		 * Make 'n' option fallthrough to 'L' option for for backward
@@ -635,6 +637,22 @@ int main(int argc, char *argv[])
 		case 'U':
 			if (*optarg != '\0' && *optarg != '\r')
 				ui.guid = optarg;
+			break;
+		case 's':
+			ret = parse_size(optarg);
+			if (ret < 0)
+				goto out;
+			else if (ret & (ret - 1)) {
+				exfat_err("sector size(%d) is not a power of 2\n",
+					ret);
+				goto out;
+			} else if ((ret & 0x1e00) == 0) {
+				exfat_err("sector size(%d) must be 512, 1024, "
+					"2048 or 4096 bytes\n",
+					ret);
+				goto out;
+			}
+			ui.sector_size = ret;
 			break;
 		case 'c':
 			ret = parse_size(optarg);
@@ -693,6 +711,13 @@ int main(int argc, char *argv[])
 
 	if (argc - optind != 1) {
 		usage();
+	}
+
+	if(ui.sector_size && ui.cluster_size && ui.sector_size > ui.cluster_size) {
+		exfat_err("cluster size (%u bytes) is smaller than sector size (%u bytes)\n",
+				  ui.cluster_size, ui.sector_size);
+		ret = -1;
+		goto out;
 	}
 
 	memset(ui.dev_name, 0, sizeof(ui.dev_name));

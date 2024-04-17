@@ -80,6 +80,7 @@ struct exfat_blk_dev {
 struct exfat_user_input {
 	char dev_name[255];
 	bool writeable;
+	unsigned int sector_size;
 	unsigned int cluster_size;
 	unsigned int sec_per_clu;
 	unsigned int boundary_align;
