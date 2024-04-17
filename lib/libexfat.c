@@ -832,7 +832,7 @@ int exfat_set_volume_serial(struct exfat_blk_dev *bd,
 	}
 
 	bd->sector_size = 1 << ppbr->bsx.sect_size_bits;
-	ppbr->bsx.vol_serial = ui->volume_serial;
+	ppbr->bsx.vol_serial = cpu_to_le32(ui->volume_serial);
 
 	/* update main boot sector */
 	ret = exfat_write_sector(bd, (char *)ppbr, BOOT_SEC_IDX);
@@ -1038,4 +1038,19 @@ int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs)
 err:
 	free(pbr);
 	return err;
+}
+
+int exfat_parse_ulong(const char *s, unsigned long *out)
+{
+	char *endptr;
+
+	*out = strtoul(s, &endptr, 0);
+
+	if (errno)
+		return -errno;
+
+	if (s == endptr || *endptr != '\0')
+		return -EINVAL;
+
+	return 0;
 }
