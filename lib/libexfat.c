@@ -1046,6 +1046,8 @@ int exfat_parse_ulong(const char *s, unsigned long *out)
 {
 	char *endptr;
 
+	errno = 0;
+
 	*out = strtoul(s, &endptr, 0);
 
 	if (errno)
