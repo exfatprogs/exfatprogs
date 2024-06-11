@@ -128,8 +128,10 @@ struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
 	struct exfat *exfat;
 
 	exfat = calloc(1, sizeof(*exfat));
-	if (!exfat)
+	if (!exfat) {
+		free(bs);
 		return NULL;
+	}
 
 	INIT_LIST_HEAD(&exfat->dir_list);
 	exfat->blk_dev = blk_dev;
