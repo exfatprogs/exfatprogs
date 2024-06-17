@@ -1,3 +1,11 @@
+exfatprogs 1.2.4 - released 2024-06-17
+======================================
+
+BUG FIXES :
+ * tune.exfat: Fix "invalid serial number" error when
+   setting an serial number.
+ * fsck.exfat: Fix memory leak in an error path
+
 exfatprogs 1.2.3 - released 2024-05-23
 ======================================
 
