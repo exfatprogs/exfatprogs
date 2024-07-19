@@ -16,6 +16,7 @@ dist_man8_MANS =		\
 # other stuff
 EXTRA_DIST =			\
 	include			\
+	tests			\
 	Android.bp		\
 	lib/Android.bp		\
 	mkfs/Android.bp		\
