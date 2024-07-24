@@ -1037,9 +1037,8 @@ static int decompress_upcase_table(const __le16 *in_table, size_t in_len,
 		ch = le16_to_cpu(in_table[i]);
 
 		if (ch == 0xFFFF && i + 1 < in_len) {
-			uint16_t len = le16_to_cpu(in_table[++i]);
-
-			k += len;
+			++i;
+			k += le16_to_cpu(in_table[i]);
 		} else {
 			out_table[k++] = ch;
 		}
