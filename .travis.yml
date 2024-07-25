@@ -6,8 +6,7 @@ notifications:
  - email: true
 
 before_script:
- - sudo apt-get install linux-headers-$(uname -r)
- - sudo apt-get install xz-utils
+ - sudo apt-get install linux-headers-$(uname -r) xz-utils
  - git clone --branch=exfat-next https://github.com/namjaejeon/exfat_oot
  - ./.travis_get_mainline_kernel
  - export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
