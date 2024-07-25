@@ -768,7 +768,7 @@ int exfat_show_volume_serial(int fd)
 		goto free_ppbr;
 	}
 
-	exfat_info("volume serial : 0x%x\n", ppbr->bsx.vol_serial);
+	exfat_info("volume serial : 0x%x\n", le32_to_cpu(ppbr->bsx.vol_serial));
 
 free_ppbr:
 	free(ppbr);
@@ -927,6 +927,8 @@ int exfat_set_fat(struct exfat *exfat, clus_t clus, clus_t next_clus)
 	offset = le32_to_cpu(exfat->bs->bsx.fat_offset) <<
 		exfat->bs->bsx.sect_size_bits;
 	offset += sizeof(clus_t) * clus;
+
+	next_clus = cpu_to_le32(next_clus);
 
 	if (exfat_write(exfat->blk_dev->dev_fd, &next_clus, sizeof(next_clus),
 			offset) != sizeof(next_clus))

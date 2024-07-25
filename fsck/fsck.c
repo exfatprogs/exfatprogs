@@ -1008,7 +1008,7 @@ static int read_bitmap(struct exfat *exfat)
 	exfat->disk_bitmap_size = DIV_ROUND_UP(exfat->clus_count, 8);
 
 	exfat_bitmap_set_range(exfat, exfat->alloc_bitmap,
-			       le64_to_cpu(dentry->bitmap_start_clu),
+			       le32_to_cpu(dentry->bitmap_start_clu),
 			       DIV_ROUND_UP(exfat->disk_bitmap_size,
 					    exfat->clus_size));
 	free(filter.out.dentry_set);
