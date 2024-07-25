@@ -19,7 +19,9 @@ jobs:
     - uses: actions/checkout@v4
     - name: before test
       run: |
-        sudo apt-get install linux-headers-$(uname -r) xz-utils
+        sudo apt-get install linux-headers-$(uname -r) xz-utils \
+                             gcc-mips-linux-gnu qemu-system-mips \
+                             qemu-user
         git clone https://github.com/namjaejeon/linux-exfat-oot
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
@@ -29,10 +31,18 @@ jobs:
         ./configure > /dev/null
         make -j$((`nproc`+1)) > /dev/null
         sudo make install > /dev/null
+        make distclean > /dev/null
+        ./configure --host=mips-linux-gnu CFLAGS=--static > /dev/null
+        make -j$((`nproc`+1)) > /dev/null
     - name: run fsck repair testcases
       run: |
         cd tests
-        sudo ./test_fsck.sh
+        export FSCK1="qemu-mips ../fsck/fsck.exfat"
+        export FSCK2="fsck.exfat"
+        sudo -E ./test_fsck.sh
+        export FSCK1="fsck.exfat"
+        export FSCK2="qemu-mips ../fsck/fsck.exfat"
+        sudo -E ./test_fsck.sh
     - name: create file/director test
       run: |
         cd linux-exfat-oot
