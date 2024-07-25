@@ -3,8 +3,8 @@
 TESTCASE_DIR=$1
 NEED_LOOPDEV=$2
 IMAGE_FILE=exfat.img
-FSCK_PROG=fsck.exfat
-FSCK_PROG_2=fsck.exfat
+FSCK_PROG=${FSCK1:-"fsck.exfat"}
+FSCK_PROG_2=${FSCK2:-"fsck.exfat"}
 FSCK_OPTS="-y -s"
 PASS_COUNT=0
 
