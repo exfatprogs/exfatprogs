@@ -577,7 +577,6 @@ uint16_t exfat_calc_name_hash(struct exfat *exfat,
 
 	for (i = 0; i < len; i++) {
 		ch = exfat->upcase_table[le16_to_cpu(name[i])];
-		ch = cpu_to_le16(ch);
 
 		/* use += to avoid promotion to int; UBSan complaints about signed overflow */
 		chksum = (chksum << 15) | (chksum >> 1);
@@ -692,7 +691,7 @@ int exfat_update_file_dentry_set(struct exfat *exfat,
 
 		dset[1].dentry.stream.name_len = (__u8)name_len;
 		dset[1].dentry.stream.name_hash =
-			exfat_calc_name_hash(exfat, utf16_name, name_len);
+			cpu_to_le16(exfat_calc_name_hash(exfat, utf16_name, name_len));
 
 		for (i = 2; i < dcount; i++) {
 			dset[i].type = EXFAT_NAME;
