@@ -249,8 +249,6 @@ int exfat_resolve_path(struct path_resolve_ctx *ctx, struct exfat_inode *child)
 	int depth, i;
 	int name_len;
 	__le16 *utf16_path;
-	static const __le16 utf16_slash = cpu_to_le16(0x002F);
-	static const __le16 utf16_null = cpu_to_le16(0x0000);
 	size_t in_size;
 
 	ctx->local_path[0] = '\0';
@@ -268,13 +266,13 @@ int exfat_resolve_path(struct path_resolve_ctx *ctx, struct exfat_inode *child)
 		memcpy((char *)utf16_path, (char *)ctx->ancestors[i]->name,
 		       name_len * 2);
 		utf16_path += name_len;
-		memcpy((char *)utf16_path, &utf16_slash, sizeof(utf16_slash));
+		*utf16_path = UTF16_SLASH;
 		utf16_path++;
 	}
 
 	if (depth > 1)
 		utf16_path--;
-	memcpy((char *)utf16_path, &utf16_null, sizeof(utf16_null));
+	*utf16_path = UTF16_NULL;
 	utf16_path++;
 
 	in_size = (utf16_path - ctx->utf16_path) * sizeof(__le16);

@@ -7,23 +7,29 @@
 #define _EXFAT_H
 
 #include <stdint.h>
+#include <byteswap.h>
 #include <linux/fs.h>
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 
+#define UTF16_NULL	0x0000
+
 #ifdef WORDS_BIGENDIAN
-#define cpu_to_le16(x)	((((x) >> 8) & 0xffu) | (((x) & 0xffu) << 8))
-#define cpu_to_le32(x)	\
-	((((x) & 0xff000000u) >> 24) | (((x) & 0x00ff0000u) >>  8) | \
-	 (((x) & 0x0000ff00u) <<  8) | (((x) & 0x000000ffu) << 24))
-#define cpu_to_le64(x)	(cpu_to_le32((uint64_t)(x)) << 32 | \
-			cpu_to_le32((uint64_t)(x) >> 32))
+#define cpu_to_le16(x)	bswap_16(x)
+#define cpu_to_le32(x)	bswap_32(x)
+#define cpu_to_le64(x)	bswap_64(x)
+
+#define UTF16_DOT	0x2E00  /* . */
+#define UTF16_SLASH	0x2F00  /* / */
 #else
 #define cpu_to_le16(x)	(x)
 #define cpu_to_le32(x)	(x)
 #define cpu_to_le64(x)	(x)
+
+#define UTF16_DOT	0x002E  /* . */
+#define UTF16_SLASH	0x002F  /* / */
 #endif
 
 #define le64_to_cpu(x)  ((uint64_t)cpu_to_le64(x))
