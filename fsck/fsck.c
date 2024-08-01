@@ -717,8 +717,6 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 	return ret;
 }
 
-#define MSDOS_DOT	cpu_to_le16('.')
-
 static int handle_dot_dotdot_filename(struct exfat_de_iter *iter,
 				      __le16 *filename,
 				      int strm_name_len)
@@ -726,7 +724,7 @@ static int handle_dot_dotdot_filename(struct exfat_de_iter *iter,
 	int i;
 
 	for (i = 0; i < strm_name_len; i++) {
-		if (filename[i] != MSDOS_DOT)
+		if (filename[i] != UTF16_DOT)
 			return 0;
 	}
 
