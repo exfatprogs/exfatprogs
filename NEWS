@@ -1,3 +1,24 @@
+exfatprogs 1.2.5 - released 2024-08-06
+======================================
+
+CHANGES :
+ * exfatprogs: remove the limitation that the device
+   path length cannot exceed 254 bytes.
+ * exfatprogs: include the test images in the release
+   package.
+
+NEW FEATURES :
+ * fsck.exfat: check and repair the filename which has
+   invalid characters.
+
+BUG FIXES :
+ * tune.exfat: check whether the volume has invalid
+   characters correctly.
+ * fsck.exfat: check whether the filename and volume
+   has invalid characters correctly.
+ * fsck.exfat: fix endianess issues which happen
+   in the big-endian system.
+
 exfatprogs 1.2.4 - released 2024-06-17
 ======================================
 
