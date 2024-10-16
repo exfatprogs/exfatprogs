@@ -1,4 +1,4 @@
-AC_PREREQ([2.68])
+AC_PREREQ([2.70])
 
 m4_define([exfat_progs_version], m4_esyscmd_s(
 	 grep "define EXFAT_PROGS_VERSION " include/version.h | \
@@ -11,16 +11,15 @@ AC_INIT([exfatprogs],
 	[https://github.com/exfatprogs/exfatprogs])
 
 AC_CONFIG_SRCDIR([config.h.in])
-AC_CONFIG_HEADER([config.h])
+AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign tar-pax dist-xz subdir-objects])
 
 AC_LANG([C])
 AC_PROG_CC
-AC_PROG_CC_STDC
 AM_SILENT_RULES([yes])
-AC_PROG_LIBTOOL
+LT_INIT
 AC_SYS_LARGEFILE
 AC_C_BIGENDIAN
 
