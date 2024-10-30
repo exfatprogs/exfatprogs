@@ -189,6 +189,8 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 
 	if (ui->sector_size)
 		bd->sector_size = ui->sector_size;
+	else if (ioctl(fd, BLKPBSZGET, &bd->sector_size) >= 0)
+		;
 	else if (ioctl(fd, BLKSSZGET, &bd->sector_size) < 0)
 		bd->sector_size = DEFAULT_SECTOR_SIZE;
 	bd->sector_size_bits = sector_size_bits(bd->sector_size);
