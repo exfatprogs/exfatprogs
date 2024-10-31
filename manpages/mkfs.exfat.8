@@ -111,6 +111,10 @@ Specifies the volume label to be associated with the exFAT filesystem.
 .TP
 .BR \-U ", " \-\-volume\-guid =\fIguid\fR
 Specifies the volume GUID to be associated with the exFAT filesystem.
+It can be given in the standard, hypenized UUID format like
+\fBaaaabbbb-cccc-dddd-eeee-ffff00001111\fR. Note: The volume GUID cannot be used
+to set the the 8-letter ID reported by \fIblkid\fR or used as
+the filesystem UUID in \fB/etc/fstab\fR.
 .TP
 .B \-\-pack\-bitmap
 Attempts to relocate the exFAT allocation bitmap so that it ends at the
