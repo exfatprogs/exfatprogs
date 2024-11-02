@@ -78,7 +78,8 @@ int main(int argc, char *argv[])
 	if (version_only)
 		exit(EXIT_FAILURE);
 
-	if (argc - optind != 1)
+	if (argc - optind != 1 && flags != EXFAT_SET_VOLUME_LABEL &&
+			flags != EXFAT_SET_VOLUME_SERIAL)
 		usage();
 
 	ui.dev_name = argv[serial_mode + 1];
