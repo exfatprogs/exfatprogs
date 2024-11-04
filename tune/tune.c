@@ -56,7 +56,6 @@ int main(int argc, char *argv[])
 	int flags = 0;
 	char label_input[VOLUME_LABEL_BUFFER_SIZE];
 	struct exfat *exfat = NULL;
-	struct pbr *bs;
 
 	init_user_input(&ui);
 
@@ -133,11 +132,7 @@ int main(int argc, char *argv[])
 		goto close_fd_out;
 	}
 
-	ret = read_boot_sect(&bd, &bs);
-	if (ret)
-		goto close_fd_out;
-
-	exfat = exfat_alloc_exfat(&bd, bs);
+	exfat = exfat_alloc_exfat(&bd, NULL);
 	if (!exfat) {
 		ret = -ENOMEM;
 		goto close_fd_out;

@@ -108,13 +108,8 @@ int main(int argc, char *argv[])
 		}
 	} else {
 		struct exfat *exfat;
-		struct pbr *bs;
 
-		ret = read_boot_sect(&bd, &bs);
-		if (ret)
-			goto close_fd_out;
-
-		exfat = exfat_alloc_exfat(&bd, bs);
+		exfat = exfat_alloc_exfat(&bd, NULL);
 		if (!exfat) {
 			ret = -ENOMEM;
 			goto close_fd_out;

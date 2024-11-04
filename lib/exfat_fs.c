@@ -127,6 +127,11 @@ struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
 {
 	struct exfat *exfat;
 
+	if (!bs) {
+		if (read_boot_sect(blk_dev, &bs))
+			return NULL;
+	}
+
 	exfat = calloc(1, sizeof(*exfat));
 	if (!exfat) {
 		free(bs);
