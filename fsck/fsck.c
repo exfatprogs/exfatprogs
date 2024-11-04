@@ -1313,15 +1313,10 @@ out:
 
 static int exfat_root_dir_check(struct exfat *exfat)
 {
-	struct exfat_inode *root;
+	struct exfat_inode *root = exfat->root;
 	clus_t clus_count = 0;
 	int err;
 
-	root = exfat_alloc_inode(ATTR_SUBDIR);
-	if (!root)
-		return -ENOMEM;
-
-	exfat->root = root;
 	root->first_clus = le32_to_cpu(exfat->bs->bsx.root_cluster);
 	if (root_check_clus_chain(exfat, root, &clus_count)) {
 		exfat_err("failed to follow the cluster chain of root\n");
@@ -1536,6 +1531,7 @@ int main(int argc, char * const argv[])
 	struct fsck_user_input ui;
 	struct exfat_blk_dev bd;
 	struct pbr *bs = NULL;
+	struct exfat_inode *root;
 	int c, ret, exit_code;
 	bool version_only = false;
 
@@ -1622,7 +1618,13 @@ int main(int argc, char * const argv[])
 	if (ret)
 		goto err;
 
-	exfat_fsck.exfat = exfat_alloc_exfat(&bd, bs);
+	root = exfat_alloc_inode(ATTR_SUBDIR);
+	if (!root) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	exfat_fsck.exfat = exfat_alloc_exfat(&bd, bs, root);
 	if (!exfat_fsck.exfat) {
 		ret = -ENOMEM;
 		goto err;

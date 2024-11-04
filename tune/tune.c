@@ -132,22 +132,9 @@ int main(int argc, char *argv[])
 		goto close_fd_out;
 	}
 
-	exfat = exfat_alloc_exfat(&bd, NULL);
+	exfat = exfat_alloc_exfat(&bd, NULL, NULL);
 	if (!exfat) {
 		ret = -ENOMEM;
-		goto close_fd_out;
-	}
-
-	exfat->root = exfat_alloc_inode(ATTR_SUBDIR);
-	if (!exfat->root) {
-		ret = -ENOMEM;
-		goto close_fd_out;
-	}
-
-	exfat->root->first_clus = le32_to_cpu(exfat->bs->bsx.root_cluster);
-	if (exfat_root_clus_count(exfat)) {
-		exfat_err("failed to follow the cluster chain of root\n");
-		ret = -EINVAL;
 		goto close_fd_out;
 	}
 

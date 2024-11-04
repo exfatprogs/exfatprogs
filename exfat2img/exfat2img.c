@@ -112,7 +112,7 @@ static int create_exfat2img(struct exfat2img *ei, const char *out_path)
 {
 	int err;
 
-	ei->exfat = exfat_alloc_exfat(&ei->bdev, NULL);
+	ei->exfat = exfat_alloc_exfat(&ei->bdev, NULL, NULL);
 	if (!ei->exfat)
 		return -ENOMEM;
 
@@ -271,18 +271,14 @@ static int dump_directory(struct exfat2img *ei,
 static int dump_root(struct exfat2img *ei)
 {
 	struct exfat *exfat = ei->exfat;
-	struct exfat_inode *root;
 	clus_t clus_count = 0;
 
-	root = exfat_alloc_inode(ATTR_SUBDIR);
-	if (!root)
-		return -ENOMEM;
+	dump_directory(ei, exfat->root, (size_t)-1, &clus_count);
+	if (exfat->root->size != clus_count * exfat->clus_size) {
+		exfat_debug("the root dir is corrupted\n");
+		return -EINVAL;
+	}
 
-	root->first_clus = le32_to_cpu(exfat->bs->bsx.root_cluster);
-	dump_directory(ei, root, (size_t)-1, &clus_count);
-	root->size = clus_count * exfat->clus_size;
-
-	ei->exfat->root = root;
 	return 0;
 }
 
