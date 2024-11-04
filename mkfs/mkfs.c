@@ -303,7 +303,7 @@ static int exfat_create_fat_table(struct exfat_blk_dev *bd,
 	if (clu < 0)
 		return ret;
 
-	finfo.used_clu_cnt = clu + 1;
+	finfo.used_clu_cnt = clu + 1 - EXFAT_FIRST_CLUSTER;
 	exfat_debug("Total used cluster count : %d\n", finfo.used_clu_cnt);
 
 	return ret;
