@@ -1,3 +1,20 @@
+exfatprogs 1.2.6 - released 2024-11-20
+======================================
+
+CHANGES :
+ * exfatprogs: replace obsolete autoconf and libtool
+   macros.
+ * mkfs.exfat: prefer the physical block size over
+   the logical block size for the exFAT sector size.
+ * mkfs.exfat: add notes about the format of the volume
+   GUID to the man page.
+ * mkfs.exfat: fix an incorrect calculation of the number
+   of used clusters.
+
+BUG FIXES :
+ * exfatlabel: fix an user input error when setting
+   a volume serial or label.
+
 exfatprogs 1.2.5 - released 2024-08-06
 ======================================
 
