@@ -98,28 +98,23 @@ static int exfat_read_dentry(struct exfat *exfat, struct exfat_inode *inode,
 	return 0;
 }
 
-static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
+static int exfat_show_fs_info(struct exfat *exfat)
 {
 	struct pbr *ppbr;
 	struct bsx64 *pbsx;
+	struct exfat_blk_dev *bd = exfat->blk_dev;
 	struct exfat_dentry ed;
 	unsigned int bitmap_clu;
 	unsigned int total_clus, used_clus, clu_offset, root_clu;
 	unsigned long long bitmap_len;
 	int ret;
 	char *volume_label;
-	struct exfat *exfat;
 	off_t off;
-
-	exfat = exfat_alloc_exfat(bd, NULL, NULL);
-	if (!exfat)
-		return -ENOMEM;
 
 	ppbr = exfat->bs;
 	if (memcmp(ppbr->bpb.oem_name, "EXFAT   ", 8) != 0) {
 		exfat_err("Bad fs_name in boot sector, which does not describe a valid exfat filesystem\n");
-		ret = -EINVAL;
-		goto free_exfat;
+		return -EINVAL;
 	}
 
 	pbsx = &ppbr->bsx;
@@ -128,15 +123,13 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 	    pbsx->sect_size_bits > EXFAT_MAX_SECT_SIZE_BITS) {
 		exfat_err("bogus sector size bits : %u\n",
 				pbsx->sect_size_bits);
-		ret = -EINVAL;
-		goto free_exfat;
+		return -EINVAL;
 	}
 
 	if (pbsx->sect_per_clus_bits > 25 - pbsx->sect_size_bits) {
 		exfat_err("bogus sectors bits per cluster : %u\n",
 				pbsx->sect_per_clus_bits);
-		ret = -EINVAL;
-		goto free_exfat;
+		return -EINVAL;
 	}
 
 	bd->sector_size_bits = pbsx->sect_size_bits;
@@ -167,7 +160,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 
 	ret = exfat_read_dentry(exfat, exfat->root, EXFAT_VOLUME, &ed, &off);
 	if (ret)
-		goto free_exfat;
+		return ret;
 
 	if (ed.type == EXFAT_VOLUME) {
 		dump_field("Volume label entry position", "0x%llx", (unsigned long long)off);
@@ -182,7 +175,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 
 	ret = exfat_read_dentry(exfat, exfat->root, EXFAT_UPCASE, &ed, &off);
 	if (ret)
-		goto free_exfat;
+		return ret;
 
 	if (ed.type == EXFAT_UPCASE) {
 		dump_field("Upcase table entry position", "0x%llx", (unsigned long long)off);
@@ -194,7 +187,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 
 	ret = exfat_read_dentry(exfat, exfat->root, EXFAT_BITMAP, &ed, &off);
 	if (ret)
-		goto free_exfat;
+		return ret;
 
 	if (ed.type == EXFAT_BITMAP) {
 		bitmap_len = le64_to_cpu(ed.bitmap_size);
@@ -206,15 +199,14 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 
 		if (bitmap_len > EXFAT_BITMAP_SIZE(exfat->clus_count)) {
 			exfat_err("Invalid bitmap size\n");
-			ret = -EINVAL;
-			goto free_exfat;
+			return -EINVAL;
 		}
 
 		ret = exfat_read(bd->dev_fd, exfat->disk_bitmap, bitmap_len,
 				exfat_c2o(exfat, bitmap_clu));
 		if (ret < 0) {
 			exfat_err("bitmap read failed: %d\n", errno);
-			ret = -EIO;
+			return -EIO;
 		}
 
 		used_clus = exfat_count_used_clusters(
@@ -227,12 +219,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 		dump_field("Free Clusters", "%u", exfat->clus_count - used_clus);
 	}
 
-	ret = 0;
-
-free_exfat:
-	exfat_free_exfat(exfat);
-
-	return ret;
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -242,6 +229,7 @@ int main(int argc, char *argv[])
 	struct exfat_blk_dev bd;
 	struct exfat_user_input ui;
 	bool version_only = false;
+	struct exfat *exfat;
 
 	init_user_input(&ui);
 	ui.writeable = false;
@@ -274,7 +262,17 @@ int main(int argc, char *argv[])
 	if (ret < 0)
 		goto out;
 
-	ret = exfat_show_ondisk_all_info(&bd);
+	exfat = exfat_alloc_exfat(&bd, NULL, NULL);
+	if (!exfat) {
+		ret = -ENOMEM;
+		goto close_dev_fd;
+	}
+
+	ret = exfat_show_fs_info(exfat);
+
+	exfat_free_exfat(exfat);
+
+close_dev_fd:
 	close(bd.dev_fd);
 
 out:
