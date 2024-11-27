@@ -22,6 +22,9 @@
 #define BITS_PER_BYTE				8
 #define BITS_PER_BYTE_MASK			0x7
 
+#define dump_field(name, fmt, ...)	\
+	exfat_info("%-40s " fmt "\n", name ":", ##__VA_ARGS__)
+
 static const unsigned char used_bit[] = {
 	0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3,/*  0 ~  19*/
 	2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4,/* 20 ~  39*/
@@ -144,36 +147,36 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 	root_clu = le32_to_cpu(pbsx->root_cluster);
 
 	exfat_info("-------------- Dump Boot sector region --------------\n");
-	exfat_info("Volume Length(sectors): \t\t%" PRIu64 "\n",
+	dump_field("Volume Length(sectors)", "%" PRIu64,
 			le64_to_cpu(pbsx->vol_length));
-	exfat_info("FAT Offset(sector offset): \t\t%u\n",
+	dump_field("FAT Offset(sector offset)", "%u",
 			le32_to_cpu(pbsx->fat_offset));
-	exfat_info("FAT Length(sectors): \t\t\t%u\n",
+	dump_field("FAT Length(sectors)", "%u",
 			le32_to_cpu(pbsx->fat_length));
-	exfat_info("Cluster Heap Offset (sector offset): \t%u\n", clu_offset);
-	exfat_info("Cluster Count: \t\t\t\t%u\n", total_clus);
-	exfat_info("Root Cluster (cluster offset): \t\t%u\n", root_clu);
-	exfat_info("Volume Serial: \t\t\t\t0x%x\n", le32_to_cpu(pbsx->vol_serial));
-	exfat_info("Bytes per Sector: \t\t\t%u\n", 1 << pbsx->sect_size_bits);
-	exfat_info("Sectors per Cluster: \t\t\t%u\n\n", 1 << pbsx->sect_per_clus_bits);
+	dump_field("Cluster Heap Offset (sector offset)", "%u", clu_offset);
+	dump_field("Cluster Count", "%u", total_clus);
+	dump_field("Root Cluster (cluster offset)", "%u", root_clu);
+	dump_field("Volume Serial", "0x%x", le32_to_cpu(pbsx->vol_serial));
+	dump_field("Bytes per Sector", "%u", 1 << pbsx->sect_size_bits);
+	dump_field("Sectors per Cluster", "%u", 1 << pbsx->sect_per_clus_bits);
 
 	bd->cluster_size =
 		1 << (pbsx->sect_per_clus_bits + pbsx->sect_size_bits);
 
-	exfat_info("----------------- Dump Root entries -----------------\n");
+	exfat_info("\n----------------- Dump Root entries -----------------\n");
 
 	ret = exfat_read_dentry(exfat, exfat->root, EXFAT_VOLUME, &ed, &off);
 	if (ret)
 		goto free_exfat;
 
 	if (ed.type == EXFAT_VOLUME) {
-		exfat_info("Volume label entry position: \t\t0x%llx\n", (unsigned long long)off);
-		exfat_info("Volume label character count: \t\t%u\n", ed.vol_char_cnt);
+		dump_field("Volume label entry position", "0x%llx", (unsigned long long)off);
+		dump_field("Volume label character count", "%u", ed.vol_char_cnt);
 		volume_label = exfat_conv_volume_label(&ed);
 		if (!volume_label)
-			exfat_info("Volume label: \t\t\t\t<invalid>\n");
+			dump_field("Volume label", "%s", "<invalid>");
 		else
-			exfat_info("Volume label: \t\t\t\t%s\n", volume_label);
+			dump_field("Volume label", "%s", volume_label);
 		free(volume_label);
 	}
 
@@ -182,10 +185,10 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 		goto free_exfat;
 
 	if (ed.type == EXFAT_UPCASE) {
-		exfat_info("Upcase table entry position: \t\t0x%llx\n", (unsigned long long)off);
-		exfat_info("Upcase table start cluster: \t\t%x\n",
+		dump_field("Upcase table entry position", "0x%llx", (unsigned long long)off);
+		dump_field("Upcase table start cluster", "%x",
 				le32_to_cpu(ed.upcase_start_clu));
-		exfat_info("Upcase table size: \t\t\t%" PRIu64 "\n",
+		dump_field("Upcase table size", "%" PRIu64,
 				le64_to_cpu(ed.upcase_size));
 	}
 
@@ -197,9 +200,9 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 		bitmap_len = le64_to_cpu(ed.bitmap_size);
 		bitmap_clu = le32_to_cpu(ed.bitmap_start_clu);
 
-		exfat_info("Bitmap entry position: \t\t\t0x%llx\n", (unsigned long long)off);
-		exfat_info("Bitmap start cluster: \t\t\t%x\n", bitmap_clu);
-		exfat_info("Bitmap size: \t\t\t\t%llu\n", bitmap_len);
+		dump_field("Bitmap entry position", "0x%llx", (unsigned long long)off);
+		dump_field("Bitmap start cluster", "%x", bitmap_clu);
+		dump_field("Bitmap size", "%llu", bitmap_len);
 
 		if (bitmap_len > EXFAT_BITMAP_SIZE(exfat->clus_count)) {
 			exfat_err("Invalid bitmap size\n");
@@ -219,10 +222,9 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 				bitmap_len);
 
 		exfat_info("\n---------------- Show the statistics ----------------\n");
-		exfat_info("Cluster size:  \t\t\t\t%u\n", bd->cluster_size);
-		exfat_info("Total Clusters: \t\t\t%u\n", exfat->clus_count);
-		exfat_info("Free Clusters: \t\t\t\t%u\n",
-				exfat->clus_count - used_clus);
+		dump_field("Cluster size", "%u", bd->cluster_size);
+		dump_field("Total Clusters", "%u", exfat->clus_count);
+		dump_field("Free Clusters", "%u", exfat->clus_count - used_clus);
 	}
 
 	ret = 0;
