@@ -3,6 +3,10 @@
 dump.exfat \- Show on-disk information of exfat filesystem
 .SH SYNOPSIS
 .B dump.exfat
+[
+.B \-d
+.I file-path
+]
 .I device
 .br
 .B dump.exfat \-V
@@ -15,3 +19,6 @@ Print on-disk information from given device that formatted by exFAT filesystem.
 .TP
 .B \-V
 Prints the version number and exits.
+.TP
+.BR \-d ", " \-\-dentry-set=\fIpath\fR
+Print information of directory entries from a given path that exits in the given device.

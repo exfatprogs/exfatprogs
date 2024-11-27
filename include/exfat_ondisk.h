@@ -57,6 +57,7 @@
 #define EXFAT_DELETE		~(0x80)
 #define IS_EXFAT_DELETED(x)	((x) < 0x80) /* deleted file (0x01~0x7F) */
 #define EXFAT_INVAL		0x80	/* invalid value */
+#define EXFAT_SEC		(EXFAT_INVAL | (1 << 6))
 #define EXFAT_BITMAP		0x81	/* allocation bitmap */
 #define EXFAT_UPCASE		0x82	/* upcase table */
 #define EXFAT_VOLUME		0x83	/* volume label */
@@ -69,6 +70,7 @@
 #define EXFAT_ACL		0xC2	/* stream entry */
 #define EXFAT_VENDOR_EXT	0xE0
 #define EXFAT_VENDOR_ALLOC	0xE1
+#define IS_EXFAT_SEC(x)		((x) >= EXFAT_SEC)
 
 /* checksum types */
 #define CS_DIR_ENTRY		0
@@ -238,6 +240,9 @@ struct exfat_dentry {
 #define file_create_time_ms		dentry.file.create_time_ms
 #define file_modify_time_ms		dentry.file.modify_time_ms
 #define file_access_time_ms		dentry.file.access_time_ms
+#define file_create_tz			dentry.file.create_tz
+#define file_modify_tz			dentry.file.modify_tz
+#define file_access_tz			dentry.file.access_tz
 #define stream_flags			dentry.stream.flags
 #define stream_name_len			dentry.stream.name_len
 #define stream_name_hash		dentry.stream.name_hash
@@ -252,5 +257,8 @@ struct exfat_dentry {
 #define upcase_start_clu		dentry.upcase.start_clu
 #define upcase_size			dentry.upcase.size
 #define upcase_checksum			dentry.upcase.checksum
+#define vendor_alloc_flags		dentry.vendor_alloc.flags
+#define vendor_alloc_start_clu		dentry.vendor_alloc.start_clu
+#define vendor_alloc_size		dentry.vendor_alloc.size
 
 #endif /* !_EXFAT_H */

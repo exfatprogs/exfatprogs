@@ -553,7 +553,7 @@ void exfat_calc_dentry_checksum(struct exfat_dentry *dentry,
 	}
 }
 
-static uint16_t calc_dentry_set_checksum(struct exfat_dentry *dset, int dcount)
+uint16_t calc_dentry_set_checksum(struct exfat_dentry *dset, int dcount)
 {
 	uint16_t checksum;
 	int i;
