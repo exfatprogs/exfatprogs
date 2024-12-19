@@ -123,12 +123,21 @@ void exfat_free_exfat(struct exfat *exfat)
 	}
 }
 
-struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
+struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs,
+		struct exfat_inode *root)
 {
 	struct exfat *exfat;
 
+	if (!bs) {
+		if (read_boot_sect(blk_dev, &bs))
+			return NULL;
+	}
+
 	exfat = calloc(1, sizeof(*exfat));
 	if (!exfat) {
+		if (root)
+			exfat_free_inode(root);
+
 		free(bs);
 		return NULL;
 	}
@@ -139,6 +148,7 @@ struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
 	exfat->clus_count = le32_to_cpu(bs->bsx.clu_count);
 	exfat->clus_size = EXFAT_CLUSTER_SIZE(bs);
 	exfat->sect_size = EXFAT_SECTOR_SIZE(bs);
+	exfat->root = root;
 
 	/* TODO: bitmap could be very large. */
 	exfat->alloc_bitmap = calloc(1, EXFAT_BITMAP_SIZE(exfat->clus_count));
@@ -163,6 +173,21 @@ struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs)
 		exfat_get_read_size(exfat) + 1;
 
 	exfat->start_clu = EXFAT_FIRST_CLUSTER;
+
+	if (exfat->root)
+		return exfat;
+
+	exfat->root = exfat_alloc_inode(ATTR_SUBDIR);
+	if (!exfat->root)
+		goto err;
+
+	exfat->root->first_clus = le32_to_cpu(exfat->bs->bsx.root_cluster);
+
+	if (exfat_root_clus_count(exfat)) {
+		exfat_err("failed to follow the cluster chain of root\n");
+		goto err;
+	}
+
 	return exfat;
 err:
 	exfat_free_exfat(exfat);

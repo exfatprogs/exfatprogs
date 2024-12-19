@@ -68,7 +68,8 @@ struct buffer_desc {
 	char		dirty[EXFAT_BITMAP_SIZE(4 * KB / 512)];
 };
 
-struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs);
+struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs,
+                                struct exfat_inode *root);
 void exfat_free_exfat(struct exfat *exfat);
 
 struct exfat_inode *exfat_alloc_inode(__u16 attr);

@@ -14,6 +14,8 @@
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
+#include "exfat_dir.h"
+#include "exfat_fs.h"
 
 #define EXFAT_MIN_SECT_SIZE_BITS		9
 #define EXFAT_MAX_SECT_SIZE_BITS		12
@@ -64,36 +66,57 @@ static unsigned int exfat_count_used_clusters(unsigned char *bitmap,
 	return count;
 }
 
+static int exfat_read_dentry(struct exfat *exfat, struct exfat_inode *inode,
+		uint8_t type, struct exfat_dentry *dentry, off_t *dentry_off)
+{
+	struct exfat_lookup_filter filter = {
+		.in.type	= type,
+		.in.dentry_count = 0,
+		.in.filter	= NULL,
+		.in.param	= NULL,
+	};
+	int retval;
+
+	retval = exfat_lookup_dentry_set(exfat, inode, &filter);
+	if (retval) {
+		/* entry not found */
+		if (retval == EOF) {
+			dentry->type = 0;
+			return 0;
+		}
+
+		return retval;
+	}
+
+	*dentry = *filter.out.dentry_set;
+	*dentry_off = filter.out.dev_offset;
+	free(filter.out.dentry_set);
+
+	return 0;
+}
+
 static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 {
 	struct pbr *ppbr;
 	struct bsx64 *pbsx;
-	struct exfat_dentry *ed;
-	unsigned int root_clu_off, bitmap_clu_off, bitmap_clu;
+	struct exfat_dentry ed;
+	unsigned int bitmap_clu;
 	unsigned int total_clus, used_clus, clu_offset, root_clu;
 	unsigned long long bitmap_len;
 	int ret;
-	unsigned char *bitmap;
 	char *volume_label;
+	struct exfat *exfat;
+	off_t off;
 
-	ppbr = malloc(EXFAT_MAX_SECTOR_SIZE);
-	if (!ppbr) {
-		exfat_err("Cannot allocate pbr: out of memory\n");
+	exfat = exfat_alloc_exfat(bd, NULL, NULL);
+	if (!exfat)
 		return -ENOMEM;
-	}
 
-	/* read main boot sector */
-	if (exfat_read(bd->dev_fd, (char *)ppbr, EXFAT_MAX_SECTOR_SIZE,
-			0) != (ssize_t)EXFAT_MAX_SECTOR_SIZE) {
-		exfat_err("main boot sector read failed\n");
-		ret = -EIO;
-		goto free_ppbr;
-	}
-
+	ppbr = exfat->bs;
 	if (memcmp(ppbr->bpb.oem_name, "EXFAT   ", 8) != 0) {
 		exfat_err("Bad fs_name in boot sector, which does not describe a valid exfat filesystem\n");
 		ret = -EINVAL;
-		goto free_ppbr;
+		goto free_exfat;
 	}
 
 	pbsx = &ppbr->bsx;
@@ -103,14 +126,14 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 		exfat_err("bogus sector size bits : %u\n",
 				pbsx->sect_size_bits);
 		ret = -EINVAL;
-		goto free_ppbr;
+		goto free_exfat;
 	}
 
 	if (pbsx->sect_per_clus_bits > 25 - pbsx->sect_size_bits) {
 		exfat_err("bogus sectors bits per cluster : %u\n",
 				pbsx->sect_per_clus_bits);
 		ret = -EINVAL;
-		goto free_ppbr;
+		goto free_exfat;
 	}
 
 	bd->sector_size_bits = pbsx->sect_size_bits;
@@ -136,81 +159,77 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 
 	bd->cluster_size =
 		1 << (pbsx->sect_per_clus_bits + pbsx->sect_size_bits);
-	root_clu_off = exfat_clus_to_blk_dev_off(bd, clu_offset, root_clu);
-
-	ed = malloc(sizeof(struct exfat_dentry)*3);
-	if (!ed) {
-		exfat_err("failed to allocate memory\n");
-		ret = -ENOMEM;
-		goto free_ppbr;
-	}
-
-	ret = exfat_read(bd->dev_fd, ed, sizeof(struct exfat_dentry)*3,
-			root_clu_off);
-	if (ret < 0) {
-		exfat_err("bitmap entry read failed: %d\n", errno);
-		ret = -EIO;
-		goto free_entry;
-	}
-
-	volume_label = exfat_conv_volume_label(&ed[0]);
-	if (!volume_label) {
-		ret = -EINVAL;
-		goto free_entry;
-	}
-
-	bitmap_clu = le32_to_cpu(ed[1].bitmap_start_clu);
-	bitmap_clu_off = exfat_clus_to_blk_dev_off(bd, clu_offset,
-			bitmap_clu);
-	bitmap_len = le64_to_cpu(ed[1].bitmap_size);
 
 	exfat_info("----------------- Dump Root entries -----------------\n");
-	exfat_info("Volume entry type: \t\t\t0x%x\n", ed[0].type);
-	exfat_info("Volume label: \t\t\t\t%s\n", volume_label);
-	exfat_info("Volume label character count: \t\t%u\n", ed[0].vol_char_cnt);
 
-	exfat_info("Bitmap entry type: \t\t\t0x%x\n", ed[1].type);
-	exfat_info("Bitmap start cluster: \t\t\t%x\n", bitmap_clu);
-	exfat_info("Bitmap size: \t\t\t\t%llu\n", bitmap_len);
+	ret = exfat_read_dentry(exfat, exfat->root, EXFAT_VOLUME, &ed, &off);
+	if (ret)
+		goto free_exfat;
 
-	exfat_info("Upcase table entry type: \t\t0x%x\n", ed[2].type);
-	exfat_info("Upcase table start cluster: \t\t%x\n",
-			le32_to_cpu(ed[2].upcase_start_clu));
-	exfat_info("Upcase table size: \t\t\t%" PRIu64 "\n\n",
-			le64_to_cpu(ed[2].upcase_size));
-
-	bitmap = malloc(bitmap_len);
-	if (!bitmap) {
-		exfat_err("bitmap allocation failed\n");
-		ret = -ENOMEM;
-		goto free_volume_label;
+	if (ed.type == EXFAT_VOLUME) {
+		exfat_info("Volume label entry position: \t\t0x%lx\n", off);
+		exfat_info("Volume label character count: \t\t%u\n", ed.vol_char_cnt);
+		volume_label = exfat_conv_volume_label(&ed);
+		if (!volume_label)
+			exfat_info("Volume label: \t\t\t\t<invalid>\n");
+		else
+			exfat_info("Volume label: \t\t\t\t%s\n", volume_label);
+		free(volume_label);
 	}
 
-	ret = exfat_read(bd->dev_fd, bitmap, bitmap_len, bitmap_clu_off);
-	if (ret < 0) {
-		exfat_err("bitmap entry read failed: %d\n", errno);
-		ret = -EIO;
-		free(bitmap);
-		goto free_volume_label;
+	ret = exfat_read_dentry(exfat, exfat->root, EXFAT_UPCASE, &ed, &off);
+	if (ret)
+		goto free_exfat;
+
+	if (ed.type == EXFAT_UPCASE) {
+		exfat_info("Upcase table entry position: \t\t0x%lx\n", off);
+		exfat_info("Upcase table start cluster: \t\t%x\n",
+				le32_to_cpu(ed.upcase_start_clu));
+		exfat_info("Upcase table size: \t\t\t%" PRIu64 "\n",
+				le64_to_cpu(ed.upcase_size));
 	}
 
-	total_clus = le32_to_cpu(pbsx->clu_count);
-	used_clus = exfat_count_used_clusters(bitmap, bitmap_len);
+	ret = exfat_read_dentry(exfat, exfat->root, EXFAT_BITMAP, &ed, &off);
+	if (ret)
+		goto free_exfat;
 
-	exfat_info("---------------- Show the statistics ----------------\n");
-	exfat_info("Cluster size:  \t\t\t\t%u\n", bd->cluster_size);
-	exfat_info("Total Clusters: \t\t\t%u\n", total_clus);
-	exfat_info("Free Clusters: \t\t\t\t%u\n", total_clus-used_clus);
+	if (ed.type == EXFAT_BITMAP) {
+		bitmap_len = le64_to_cpu(ed.bitmap_size);
+		bitmap_clu = le32_to_cpu(ed.bitmap_start_clu);
+
+		exfat_info("Bitmap entry position: \t\t\t0x%lx\n", off);
+		exfat_info("Bitmap start cluster: \t\t\t%x\n", bitmap_clu);
+		exfat_info("Bitmap size: \t\t\t\t%llu\n", bitmap_len);
+
+		if (bitmap_len > EXFAT_BITMAP_SIZE(exfat->clus_count)) {
+			exfat_err("Invalid bitmap size\n");
+			ret = -EINVAL;
+			goto free_exfat;
+		}
+
+		ret = exfat_read(bd->dev_fd, exfat->disk_bitmap, bitmap_len,
+				exfat_c2o(exfat, bitmap_clu));
+		if (ret < 0) {
+			exfat_err("bitmap read failed: %d\n", errno);
+			ret = -EIO;
+		}
+
+		used_clus = exfat_count_used_clusters(
+				(unsigned char *)exfat->disk_bitmap,
+				bitmap_len);
+
+		exfat_info("\n---------------- Show the statistics ----------------\n");
+		exfat_info("Cluster size:  \t\t\t\t%u\n", bd->cluster_size);
+		exfat_info("Total Clusters: \t\t\t%u\n", exfat->clus_count);
+		exfat_info("Free Clusters: \t\t\t\t%u\n",
+				exfat->clus_count - used_clus);
+	}
+
 	ret = 0;
 
-	free(bitmap);
+free_exfat:
+	exfat_free_exfat(exfat);
 
-free_volume_label:
-	free(volume_label);
-free_entry:
-	free(ed);
-free_ppbr:
-	free(ppbr);
 	return ret;
 }
 

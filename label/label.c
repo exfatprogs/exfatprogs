@@ -108,30 +108,11 @@ int main(int argc, char *argv[])
 		}
 	} else {
 		struct exfat *exfat;
-		struct pbr *bs;
 
-		ret = read_boot_sect(&bd, &bs);
-		if (ret)
-			goto close_fd_out;
-
-		exfat = exfat_alloc_exfat(&bd, bs);
+		exfat = exfat_alloc_exfat(&bd, NULL, NULL);
 		if (!exfat) {
 			ret = -ENOMEM;
 			goto close_fd_out;
-		}
-
-		exfat->root = exfat_alloc_inode(ATTR_SUBDIR);
-		if (!exfat->root) {
-			ret = -ENOMEM;
-			goto free_exfat;
-		}
-
-		exfat->root->first_clus = le32_to_cpu(exfat->bs->bsx.root_cluster);
-		if (exfat_root_clus_count(exfat)) {
-			exfat_err("failed to follow the cluster chain of root\n");
-			exfat_free_inode(exfat->root);
-			ret = -EINVAL;
-			goto free_exfat;
 		}
 
 		/* Mode to change or display volume label */
@@ -140,9 +121,7 @@ int main(int argc, char *argv[])
 		else if (flags == EXFAT_SET_VOLUME_LABEL)
 			ret = exfat_set_volume_label(exfat, argv[2]);
 
-free_exfat:
-		if (exfat)
-			exfat_free_exfat(exfat);
+		exfat_free_exfat(exfat);
 	}
 
 close_fd_out:

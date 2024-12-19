@@ -108,13 +108,11 @@ static void free_exfat2img(struct exfat2img *ei)
 		close(ei->bdev.dev_fd);
 }
 
-static int create_exfat2img(struct exfat2img *ei,
-			    struct pbr *bs,
-			    const char *out_path)
+static int create_exfat2img(struct exfat2img *ei, const char *out_path)
 {
 	int err;
 
-	ei->exfat = exfat_alloc_exfat(&ei->bdev, bs);
+	ei->exfat = exfat_alloc_exfat(&ei->bdev, NULL, NULL);
 	if (!ei->exfat)
 		return -ENOMEM;
 
@@ -273,18 +271,14 @@ static int dump_directory(struct exfat2img *ei,
 static int dump_root(struct exfat2img *ei)
 {
 	struct exfat *exfat = ei->exfat;
-	struct exfat_inode *root;
 	clus_t clus_count = 0;
 
-	root = exfat_alloc_inode(ATTR_SUBDIR);
-	if (!root)
-		return -ENOMEM;
+	dump_directory(ei, exfat->root, (size_t)-1, &clus_count);
+	if (exfat->root->size != clus_count * exfat->clus_size) {
+		exfat_debug("the root dir is corrupted\n");
+		return -EINVAL;
+	}
 
-	root->first_clus = le32_to_cpu(exfat->bs->bsx.root_cluster);
-	dump_directory(ei, root, (size_t)-1, &clus_count);
-	root->size = clus_count * exfat->clus_size;
-
-	ei->exfat->root = root;
 	return 0;
 }
 
@@ -884,7 +878,6 @@ int main(int argc, char * const argv[])
 {
 	int err = 0, c;
 	const char *in_path, *out_path = NULL, *blkdev_path;
-	struct pbr *bs;
 	struct exfat_user_input ui;
 	off_t last_sect;
 	bool restore;
@@ -940,13 +933,7 @@ int main(int argc, char * const argv[])
 	if (restore)
 		return restore_from_stdin(&ei);
 
-	err = read_boot_sect(&ei.bdev, &bs);
-	if (err) {
-		close(ei.bdev.dev_fd);
-		return EXIT_FAILURE;
-	}
-
-	err = create_exfat2img(&ei, bs, out_path);
+	err = create_exfat2img(&ei, out_path);
 	if (err)
 		return EXIT_FAILURE;
 
