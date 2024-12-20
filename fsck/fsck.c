@@ -1045,14 +1045,128 @@ static int decompress_upcase_table(const __le16 *in_table, size_t in_len,
 	return 0;
 }
 
-static int read_upcase_table(struct exfat *exfat)
+static bool exfat_has_default_upcase_table(struct exfat *exfat, clus_t *clu)
+{
+	char *upcase;
+	bool ret = false;
+	int size;
+	clus_t def_clu = DIV_ROUND_UP(EXFAT_BITMAP_SIZE(exfat->clus_count),
+			exfat->clus_size) + EXFAT_FIRST_CLUSTER;
+
+	upcase = malloc(sizeof(default_upcase_table));
+	if (!upcase)
+		return false;
+
+	if (!exfat_heap_clus(exfat, *clu))
+		*clu = def_clu;
+
+again:
+	size = pread(exfat->blk_dev->dev_fd, upcase,
+			sizeof(default_upcase_table),
+			exfat_c2o(exfat, *clu));
+	if (size == sizeof(default_upcase_table)) {
+		if (!memcmp(upcase, default_upcase_table, size)) {
+			ret = true;
+			goto out;
+		}
+
+		if (*clu != def_clu) {
+			*clu = def_clu;
+			goto again;
+		}
+	}
+
+out:
+	free(upcase);
+
+	return ret;
+}
+
+static int exfat_repair_upcase_table(struct exfat *exfat,
+		struct exfat_dentry *dentry, loff_t dentry_off)
+{
+	clus_t clu;
+	int ret;
+	off_t upcase_off;
+	size_t nbytes;
+	struct exfat_dentry ed;
+	int fd = exfat->blk_dev->dev_fd;
+	unsigned int clu_count = DIV_ROUND_UP(sizeof(default_upcase_table),
+			exfat->clus_size);
+
+	/* Allocate a new cluster if root dir has not empty dentry */
+	if (dentry_off == EOF) {
+		if (exfat_alloc_cluster(exfat, exfat->root, &clu)) {
+			exfat_err("No space to store upcase_table entry\n");
+			return -ENOSPC;
+		}
+
+		dentry_off = exfat_c2o(exfat, clu);
+	}
+
+	clu = EXFAT_EOF_CLUSTER;
+	if (dentry == NULL)
+		dentry = &ed;
+	else if (dentry->type == EXFAT_UPCASE)
+		clu = le32_to_cpu(dentry->upcase_start_clu);
+
+	/*
+	 * Write default upcase table if the upcase table entry is corrupted
+	 * or not found the default upcase table
+	 */
+	if (!exfat_has_default_upcase_table(exfat, &clu)) {
+		if (exfat_find_free_cluster(exfat, clu_count, &clu)) {
+			exfat_err("No space to store upcase_table\n");
+			return -ENOSPC;
+		}
+
+		upcase_off = exfat_c2o(exfat, clu);
+		ret = pwrite(fd, default_upcase_table,
+			     sizeof(default_upcase_table), upcase_off);
+		if (ret != sizeof(default_upcase_table)) {
+			exfat_err("failed to write new upcase_table\n");
+			return -EIO;
+		}
+
+		/* Zero the remaining space */
+		upcase_off += EXFAT_UPCASE_TABLE_SIZE;
+		nbytes = clu_count * exfat->clus_size - EXFAT_UPCASE_TABLE_SIZE;
+		if (nbytes) {
+			if (exfat_write_zero(fd, nbytes, upcase_off)) {
+				exfat_err("failed to zero the remaining space\n");
+				return -EIO;
+			}
+		}
+	}
+
+	/* Allocate the clusters */
+	exfat_bitmap_set_range(exfat, exfat->alloc_bitmap, clu, clu_count);
+
+	/* Create upcase table dentry */
+	memset(dentry, 0, sizeof(*dentry));
+	dentry->type = EXFAT_UPCASE;
+	dentry->upcase_start_clu = cpu_to_le32(clu);
+	dentry->upcase_checksum = cpu_to_le32(0xe619d30d);
+	dentry->upcase_size = cpu_to_le64(sizeof(default_upcase_table));
+
+	/* Write upcase table dentry */
+	if (pwrite(fd, dentry, DENTRY_SIZE, dentry_off) != DENTRY_SIZE) {
+		exfat_err("failed to write upcase_table dentry\n");
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int read_upcase_table(struct exfat_fsck *fsck)
 {
 	struct exfat_lookup_filter filter = {
 		.in.type	= EXFAT_UPCASE,
-		.in.dentry_count = 0,
+		.in.dentry_count = 1,
 		.in.filter	= NULL,
 		.in.param	= NULL,
 	};
+	struct exfat *exfat = fsck->exfat;
 	struct exfat_dentry *dentry = NULL;
 	__le16 *upcase = NULL;
 	__le16 *valid_upcase = (__le16 *)default_upcase_table;
@@ -1060,20 +1174,30 @@ static int read_upcase_table(struct exfat *exfat)
 	int retval;
 	ssize_t size;
 	__le32 checksum;
+	clus_t start_clu;
+	loff_t dentry_off;
 
 	retval = exfat_lookup_dentry_set(exfat, exfat->root, &filter);
 	if (retval == EOF) {
-		exfat_err("not found upcase table entry\n");
+		dentry_off = filter.out.dev_offset;
+		if (exfat_repair_ask(fsck, ER_DE_UPCASE,
+				"ERROR: not found upcase table entry"))
+			goto repair_upcase;
+
 		retval = -EINVAL;
 		goto use_default;
 	} else if (retval)
 		return retval;
 
 	dentry = filter.out.dentry_set;
+	start_clu = le32_to_cpu(dentry->upcase_start_clu);
+	dentry_off = filter.out.dev_offset;
 
-	if (!exfat_heap_clus(exfat, le32_to_cpu(dentry->upcase_start_clu))) {
-		exfat_err("invalid start cluster of upcase table. 0x%x\n",
-			le32_to_cpu(dentry->upcase_start_clu));
+	if (!exfat_heap_clus(exfat, start_clu)) {
+		if (exfat_repair_ask(fsck, ER_DE_UPCASE,
+				"ERROR: invalid start cluster of upcase table. 0x%x", start_clu))
+			goto repair_upcase;
+
 		retval = -EINVAL;
 		goto use_default;
 	}
@@ -1081,8 +1205,10 @@ static int read_upcase_table(struct exfat *exfat)
 	size = (ssize_t)le64_to_cpu(dentry->upcase_size);
 	if (size > (ssize_t)(EXFAT_MAX_UPCASE_CHARS * sizeof(__le16)) ||
 			size == 0 || size % sizeof(__le16)) {
-		exfat_err("invalid size of upcase table. 0x%" PRIx64 "\n",
-			le64_to_cpu(dentry->upcase_size));
+		if (exfat_repair_ask(fsck, ER_DE_UPCASE,
+				"ERROR: invalid size of upcase table. 0x%" PRIx64, size))
+			goto repair_upcase;
+
 		retval = -EINVAL;
 		goto use_default;
 	}
@@ -1105,8 +1231,11 @@ static int read_upcase_table(struct exfat *exfat)
 	checksum = 0;
 	boot_calc_checksum((unsigned char *)upcase, size, false, &checksum);
 	if (le32_to_cpu(dentry->upcase_checksum) != checksum) {
-		exfat_err("corrupted upcase table %#x (expected: %#x)\n",
-			checksum, le32_to_cpu(dentry->upcase_checksum));
+		if (exfat_repair_ask(fsck, ER_DE_UPCASE,
+				"ERROR: corrupted upcase table %#x (expected: %#x)",
+				checksum, le32_to_cpu(dentry->upcase_checksum)))
+			goto repair_upcase;
+
 		retval = -EINVAL;
 		goto use_default;
 	}
@@ -1119,9 +1248,16 @@ static int read_upcase_table(struct exfat *exfat)
 	valid_upcase = upcase;
 	valid_upcase_size = size;
 
-use_default:
+repair_upcase:
 	if (valid_upcase != upcase)
+		retval = exfat_repair_upcase_table(exfat, dentry, dentry_off);
+
+use_default:
+	if (valid_upcase != upcase) {
 		exfat_stat.error_count++;
+		if (retval == 0)
+			exfat_stat.fixed_count++;
+	}
 
 	exfat->upcase_table = calloc(EXFAT_UPCASE_TABLE_CHARS, sizeof(uint16_t));
 	if (!exfat->upcase_table) {
@@ -1325,8 +1461,9 @@ out:
 	return ret;
 }
 
-static int exfat_root_dir_check(struct exfat *exfat)
+static int exfat_root_dir_check(struct exfat_fsck *fsck)
 {
+	struct exfat *exfat = fsck->exfat;
 	struct exfat_inode *root = exfat->root;
 	clus_t clus_count = 0;
 	int err;
@@ -1352,7 +1489,7 @@ static int exfat_root_dir_check(struct exfat *exfat)
 		return -EINVAL;
 	}
 
-	err = read_upcase_table(exfat);
+	err = read_upcase_table(fsck);
 	if (err == -EINVAL)
 		exfat_err("upcase table is invalid, use default\n");
 	else if (err) {
@@ -1659,7 +1796,7 @@ int main(int argc, char * const argv[])
 	}
 
 	exfat_debug("verifying root directory...\n");
-	ret = exfat_root_dir_check(exfat_fsck.exfat);
+	ret = exfat_root_dir_check(&exfat_fsck);
 	if (ret) {
 		exfat_err("failed to verify root directory.\n");
 		goto out;

@@ -97,4 +97,8 @@ void exfat_calc_dentry_checksum(struct exfat_dentry *dentry,
 uint16_t exfat_calc_name_hash(struct exfat *exfat,
 			      __le16 *name, int len);
 
+int exfat_find_free_cluster(struct exfat *exfat, int clu_count,
+		clus_t *new_clu);
+int exfat_alloc_cluster(struct exfat *exfat, struct exfat_inode *inode,
+		clus_t *new_clu);
 #endif
