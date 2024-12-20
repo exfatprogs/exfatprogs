@@ -19,6 +19,7 @@
 #include "exfat_fs.h"
 #include "exfat_dir.h"
 #include "fsck.h"
+#include "upcase_table.h"
 
 struct fsck_user_input {
 	struct exfat_user_input		ei;
@@ -1054,12 +1055,18 @@ static int read_upcase_table(struct exfat *exfat)
 	};
 	struct exfat_dentry *dentry = NULL;
 	__le16 *upcase = NULL;
+	__le16 *valid_upcase = (__le16 *)default_upcase_table;
+	ssize_t valid_upcase_size = sizeof(default_upcase_table);
 	int retval;
 	ssize_t size;
 	__le32 checksum;
 
 	retval = exfat_lookup_dentry_set(exfat, exfat->root, &filter);
-	if (retval)
+	if (retval == EOF) {
+		exfat_err("not found upcase table entry\n");
+		retval = -EINVAL;
+		goto use_default;
+	} else if (retval)
 		return retval;
 
 	dentry = filter.out.dentry_set;
@@ -1068,7 +1075,7 @@ static int read_upcase_table(struct exfat *exfat)
 		exfat_err("invalid start cluster of upcase table. 0x%x\n",
 			le32_to_cpu(dentry->upcase_start_clu));
 		retval = -EINVAL;
-		goto out;
+		goto use_default;
 	}
 
 	size = (ssize_t)le64_to_cpu(dentry->upcase_size);
@@ -1077,7 +1084,7 @@ static int read_upcase_table(struct exfat *exfat)
 		exfat_err("invalid size of upcase table. 0x%" PRIx64 "\n",
 			le64_to_cpu(dentry->upcase_size));
 		retval = -EINVAL;
-		goto out;
+		goto use_default;
 	}
 
 	upcase = malloc(size);
@@ -1101,7 +1108,7 @@ static int read_upcase_table(struct exfat *exfat)
 		exfat_err("corrupted upcase table %#x (expected: %#x)\n",
 			checksum, le32_to_cpu(dentry->upcase_checksum));
 		retval = -EINVAL;
-		goto out;
+		goto use_default;
 	}
 
 	exfat_bitmap_set_range(exfat, exfat->alloc_bitmap,
@@ -1109,13 +1116,20 @@ static int read_upcase_table(struct exfat *exfat)
 			       DIV_ROUND_UP(le64_to_cpu(dentry->upcase_size),
 					    exfat->clus_size));
 
+	valid_upcase = upcase;
+	valid_upcase_size = size;
+
+use_default:
+	if (valid_upcase != upcase)
+		exfat_stat.error_count++;
+
 	exfat->upcase_table = calloc(EXFAT_UPCASE_TABLE_CHARS, sizeof(uint16_t));
 	if (!exfat->upcase_table) {
 		retval = -EIO;
 		goto out;
 	}
 
-	decompress_upcase_table(upcase, size / 2,
+	decompress_upcase_table(valid_upcase, valid_upcase_size / 2,
 				exfat->upcase_table, EXFAT_UPCASE_TABLE_CHARS);
 out:
 	if (dentry)
@@ -1339,7 +1353,9 @@ static int exfat_root_dir_check(struct exfat *exfat)
 	}
 
 	err = read_upcase_table(exfat);
-	if (err) {
+	if (err == -EINVAL)
+		exfat_err("upcase table is invalid, use default\n");
+	else if (err) {
 		exfat_err("failed to read upcase table\n");
 		return -EINVAL;
 	}
