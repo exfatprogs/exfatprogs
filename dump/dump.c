@@ -24,11 +24,14 @@
 
 #define DUMP_SCAN_DIR			(1 << 0)
 #define DUMP_SCAN_DIR_RECURSIVE		(1 << 1)
+#define DUMP_CLUSTER_CHAIN		(1 << 2)
 
 #define dump_field(name, fmt, ...)	\
 	exfat_info("%-40s " fmt "\n", name ":", ##__VA_ARGS__)
 #define dump_dentry_field(name, fmt, ...)	\
 	exfat_info("   %-30s  " fmt "\n", name ":", ##__VA_ARGS__)
+#define dump_dentry_field_wrap(fmt, ...)	\
+	exfat_info("   %-30s  " fmt "\n", "", ##__VA_ARGS__)
 
 static const unsigned char used_bit[] = {
 	0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3,/*  0 ~  19*/
@@ -50,6 +53,7 @@ static void usage(void)
 {
 	fprintf(stderr, "Usage: dump.exfat\n");
 	fprintf(stderr, "\t-d | --dentry-set=path                Show directory entry set\n");
+	fprintf(stderr, "\t-c | --cluster-chain                  Show cluster chain\n");
 	fprintf(stderr,
 		"\t-s | --scan-dir=dir-path              Scan and show directory entry sets\n");
 	fprintf(stderr,
@@ -64,6 +68,7 @@ static struct option opts[] = {
 	{"dentry-set",		required_argument,	NULL,	'd' },
 	{"scan-dir",		required_argument,	NULL,	's' },
 	{"recursive",		no_argument,		NULL,	'r' },
+	{"cluster-chain",	no_argument,		NULL,	'c' },
 	{"version",		no_argument,		NULL,	'V' },
 	{"help",		no_argument,		NULL,	'h' },
 	{"?",			no_argument,		NULL,	'?' },
@@ -397,13 +402,81 @@ static int exfat_get_next_dentry_offset(struct exfat *exfat, bool is_contiguous,
 	return 0;
 }
 
+/*
+ * Print the cluster chain in the format.
+ *
+ * Cluster Chain:    clu_1:nr_clu_1
+ *                   clu_2:nr_clu_2
+ *                   ... ...
+ *                   clu_n:nr_clu_n
+ *
+ */
+static void exfat_show_cluster_chain(struct exfat *exfat,
+		struct exfat_dentry *ed)
+{
+	int ret = 0;
+	clus_t clu, next_clu;
+	clus_t count = 0, num_clus;
+	bool first = true;
+
+	clu = le32_to_cpu(ed->stream_start_clu);
+	num_clus = DIV_ROUND_UP(le64_to_cpu(ed->stream_size), exfat->clus_size);
+	if (clu == 0)
+		return;
+
+	while (clu != EXFAT_EOF_CLUSTER) {
+		if (!exfat_heap_clus(exfat, clu)) {
+			if (first)
+				dump_dentry_field("Cluster Chain",
+						"%u(invalid)", clu);
+			else
+				dump_dentry_field_wrap("%u(invalid)", clu);
+
+			return;
+		}
+
+		if (exfat_bitmap_get(exfat->alloc_bitmap, clu)) {
+			dump_dentry_field_wrap("%u(double-link)", clu);
+			return;
+		}
+
+		exfat_bitmap_set(exfat->alloc_bitmap, clu);
+
+		count++;
+		if (ed->stream_flags & EXFAT_SF_CONTIGUOUS) {
+			if (count == num_clus)
+				next_clu = EXFAT_EOF_CLUSTER;
+			else
+				next_clu = clu + 1;
+		} else
+			ret = exfat_get_next_clus(exfat, clu, &next_clu);
+
+		if (clu + 1 != next_clu || ret) {
+			if (first)
+				dump_dentry_field("Cluster chain", "%u:%u",
+					clu - count + 1, count);
+			else
+				dump_dentry_field_wrap("%u:%u", clu - count + 1, count);
+			first = false;
+			count = 0;
+		}
+
+		if (ret)
+			return;
+
+		clu = next_clu;
+	}
+}
+
 struct show_dentry {
 	__u8 type;
 	const char *type_name;
-	void (*show)(struct exfat_dentry *ed);
+	void (*show)(struct exfat_dentry *ed, struct exfat *exfat,
+			uint32_t flags);
 };
 
-static void exfat_show_file_dentry(struct exfat_dentry *ed)
+static void exfat_show_file_dentry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	uint16_t checksum = calc_dentry_set_checksum(ed, ed->file_num_ext + 1);
 
@@ -424,13 +497,16 @@ static void exfat_show_file_dentry(struct exfat_dentry *ed)
 	dump_dentry_field("LastAccessedUtcOffset", "%u", ed->file_access_tz);
 }
 
-static void exfat_show_stream_dentry(struct exfat_dentry *ed)
+static void exfat_show_stream_dentry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	dump_dentry_field("NameLength", "%u", ed->stream_name_len);
 	dump_dentry_field("NameHash", "0x%04X", le16_to_cpu(ed->stream_name_hash));
 	dump_dentry_field("ValidDataLength", "%" PRIu64, le64_to_cpu(ed->stream_valid_size));
 	dump_dentry_field("FirstCluster", "%u", le32_to_cpu(ed->stream_start_clu));
 	dump_dentry_field("DataLength", "%" PRIu64, le64_to_cpu(ed->stream_size));
+	if (flags & DUMP_CLUSTER_CHAIN)
+		exfat_show_cluster_chain(exfat, ed);
 }
 
 static void exfat_show_bytes(const char *name, unsigned char *bytes, int n)
@@ -447,32 +523,41 @@ static void exfat_show_bytes(const char *name, unsigned char *bytes, int n)
 #define dump_bytes_field(name, feild)	\
 	exfat_show_bytes("   " name ":", (unsigned char *)feild, sizeof(feild))
 
-static void exfat_show_name_dentry(struct exfat_dentry *ed)
+static void exfat_show_name_dentry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	dump_bytes_field("FileName", ed->name_unicode);
 }
 
-static void exfat_show_bitmap_entry(struct exfat_dentry *ed)
+static void exfat_show_bitmap_entry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	dump_dentry_field("BitmapFlags", "0x%02X", ed->dentry.bitmap.flags);
 	dump_dentry_field("FirstCluster", "%u", le32_to_cpu(ed->bitmap_start_clu));
 	dump_dentry_field("DataLength", "%" PRIu64, le64_to_cpu(ed->bitmap_size));
+	if (flags & DUMP_CLUSTER_CHAIN)
+		exfat_show_cluster_chain(exfat, ed);
 }
 
-static void exfat_show_upcase_entry(struct exfat_dentry *ed)
+static void exfat_show_upcase_entry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	dump_dentry_field("TableChecksum", "0x%08X", le32_to_cpu(ed->upcase_checksum));
 	dump_dentry_field("FirstCluster", "%u", le32_to_cpu(ed->upcase_start_clu));
 	dump_dentry_field("DataLength", "%" PRIu64, le64_to_cpu(ed->upcase_size));
+	if (flags & DUMP_CLUSTER_CHAIN)
+		exfat_show_cluster_chain(exfat, ed);
 }
 
-static void exfat_show_volume_entry(struct exfat_dentry *ed)
+static void exfat_show_volume_entry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	dump_dentry_field("CharacterCount", "%u", ed->vol_char_cnt);
 	dump_bytes_field("VolumeLabel", ed->vol_label);
 }
 
-static void exfat_show_guid_entry(struct exfat_dentry *ed)
+static void exfat_show_guid_entry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	dump_dentry_field("SecondaryCount", "%u", ed->dentry.guid.num_ext);
 	dump_dentry_field("SetChecksum", "0x%04X", le16_to_cpu(ed->dentry.guid.checksum));
@@ -480,18 +565,22 @@ static void exfat_show_guid_entry(struct exfat_dentry *ed)
 	dump_bytes_field("VolumeGuid", ed->dentry.guid.guid);
 }
 
-static void exfat_show_vendor_ext_dentry(struct exfat_dentry *ed)
+static void exfat_show_vendor_ext_dentry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	dump_bytes_field("VendorGuid", ed->dentry.vendor_ext.guid);
 	dump_bytes_field("VendorDefined", ed->dentry.vendor_ext.vendor_defined);
 }
 
-static void exfat_show_vendor_alloc_dentry(struct exfat_dentry *ed)
+static void exfat_show_vendor_alloc_dentry(struct exfat_dentry *ed,
+		struct exfat *exfat, uint32_t flags)
 {
 	dump_bytes_field("VendorGuid", ed->dentry.vendor_alloc.guid);
 	dump_bytes_field("VendorDefined", ed->dentry.vendor_alloc.vendor_defined);
 	dump_dentry_field("FirstCluster", "%u", le32_to_cpu(ed->vendor_alloc_start_clu));
 	dump_dentry_field("DataLength", "%" PRIu64, le64_to_cpu(ed->vendor_alloc_size));
+	if (flags & DUMP_CLUSTER_CHAIN)
+		exfat_show_cluster_chain(exfat, ed);
 }
 
 static struct show_dentry show_dentry_array[] = {
@@ -515,9 +604,10 @@ static struct show_dentry show_dentry_array[] = {
  *   ed: The directory entry will be printed.
  *   index: The entry index in directory entry set.
  *   dentry_off: The position of the directory entry.
+ *   flags: If DUMP_CLUSTER_CHAIN is set, the cluster chain will be printed.
  */
 static void exfat_show_dentry(struct exfat *exfat, struct exfat_dentry *ed,
-		unsigned int index, off_t dentry_off)
+		unsigned int index, off_t dentry_off, uint32_t flags)
 {
 	int i;
 	struct show_dentry *sd = NULL;
@@ -544,7 +634,7 @@ static void exfat_show_dentry(struct exfat *exfat, struct exfat_dentry *ed,
 		dump_dentry_field("GeneralSecondaryFlags", "0x%02X", ed->stream_flags);
 
 	if (sd && sd->show)
-		sd->show(ed);
+		sd->show(ed, exfat, flags);
 }
 
 /*
@@ -554,9 +644,11 @@ static void exfat_show_dentry(struct exfat *exfat, struct exfat_dentry *ed,
  *   inode: it contains a copy of the directory entry set that will be printed.
  *   dir_is_contiguous: Whether the clusters of the parent directory are
  *                      contiguous.
+ *   flags: If DUMP_CLUSTER_CHAIN is set, the cluster chain will be printed.
  */
 static void exfat_show_dentry_set(struct exfat *exfat,
-		struct exfat_inode *inode, bool dir_is_contiguous)
+		struct exfat_inode *inode, bool dir_is_contiguous,
+		uint32_t flags)
 {
 	int i;
 	struct exfat_dentry *ed;
@@ -566,7 +658,7 @@ static void exfat_show_dentry_set(struct exfat *exfat,
 	dentry_off = inode->dev_offset;
 
 	for (i = 0; i < inode->dentry_count; i++, ed++) {
-		exfat_show_dentry(exfat, ed, i, dentry_off);
+		exfat_show_dentry(exfat, ed, i, dentry_off, flags);
 
 		if (i < inode->dentry_count - 1)
 			exfat_get_next_dentry_offset(exfat,
@@ -714,7 +806,7 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 						"<invalid>");
 
 			exfat_info("Path: %s\n", new_path);
-			exfat_show_dentry_set(exfat, inode, dir->is_contiguous);
+			exfat_show_dentry_set(exfat, inode, dir->is_contiguous, flags);
 			if ((inode->attr & ATTR_SUBDIR) &&
 			    (flags & DUMP_SCAN_DIR_RECURSIVE)) {
 				ret = exfat_scan_dentry_set(exfat, inode,
@@ -730,7 +822,7 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 			exfat_info("-----------------------------------------------------\n");
 			exfat_info("Directory: %s\n", path);
 			exfat_show_dentry(exfat, dentry, 0,
-					exfat_de_iter_device_offset(&de_iter));
+					exfat_de_iter_device_offset(&de_iter), flags);
 		}
 
 		ret = exfat_de_iter_advance(&de_iter, dentry_count);
@@ -767,7 +859,19 @@ static int exfat_show_dentry_set_by_path(struct exfat *exfat, const char *path,
 	}
 
 	exfat_info("\n");
-	exfat_show_dentry_set(exfat, inode, dir_is_contiguous);
+
+	/* The root has no directory entry, only show the cluster chain */
+	if (exfat->root->first_clus == inode->first_clus &&
+	    (flags & DUMP_CLUSTER_CHAIN)) {
+		struct exfat_dentry ed;
+
+		memset(&ed, 0, sizeof(ed));
+		ed.stream_start_clu = cpu_to_le32(inode->first_clus);
+		memset(exfat->alloc_bitmap, 0, EXFAT_BITMAP_SIZE(exfat->clus_count));
+
+		exfat_show_cluster_chain(exfat, &ed);
+	} else
+		exfat_show_dentry_set(exfat, inode, dir_is_contiguous, flags);
 
 out:
 	exfat_free_inode(inode);
@@ -792,7 +896,7 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "iVhd:s:r", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "iVhd:s:rc", opts, NULL)) != EOF)
 		switch (c) {
 		case 'V':
 			version_only = true;
@@ -806,6 +910,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'r':
 			flags |= DUMP_SCAN_DIR_RECURSIVE;
+			break;
+		case 'c':
+			flags |= DUMP_CLUSTER_CHAIN;
 			break;
 		case '?':
 		case 'h':
