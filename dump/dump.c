@@ -22,6 +22,9 @@
 #define BITS_PER_BYTE				8
 #define BITS_PER_BYTE_MASK			0x7
 
+#define DUMP_SCAN_DIR			(1 << 0)
+#define DUMP_SCAN_DIR_RECURSIVE		(1 << 1)
+
 #define dump_field(name, fmt, ...)	\
 	exfat_info("%-40s " fmt "\n", name ":", ##__VA_ARGS__)
 #define dump_dentry_field(name, fmt, ...)	\
@@ -47,6 +50,10 @@ static void usage(void)
 {
 	fprintf(stderr, "Usage: dump.exfat\n");
 	fprintf(stderr, "\t-d | --dentry-set=path                Show directory entry set\n");
+	fprintf(stderr,
+		"\t-s | --scan-dir=dir-path              Scan and show directory entry sets\n");
+	fprintf(stderr,
+		"\t-r | --recursive                      Scan and show directory entry sets recursively\n");
 	fprintf(stderr, "\t-V | --version                        Show version\n");
 	fprintf(stderr, "\t-h | --help                           Show help\n");
 
@@ -55,6 +62,8 @@ static void usage(void)
 
 static struct option opts[] = {
 	{"dentry-set",		required_argument,	NULL,	'd' },
+	{"scan-dir",		required_argument,	NULL,	's' },
+	{"recursive",		no_argument,		NULL,	'r' },
 	{"version",		no_argument,		NULL,	'V' },
 	{"help",		no_argument,		NULL,	'h' },
 	{"?",			no_argument,		NULL,	'?' },
@@ -565,7 +574,178 @@ static void exfat_show_dentry_set(struct exfat *exfat,
 	}
 }
 
-static int exfat_show_dentry_set_by_path(struct exfat *exfat, const char *path)
+/*
+ * Create an inode for a directory entry set
+ *
+ * Input:
+ *   de_iter: the directory entry set in the scan buffer
+ * Output:
+ *   new: the newly created inode.
+ * Return:
+ *   0 on success
+ *   -error code on failure
+ */
+static int exfat_create_inode(struct exfat *exfat,
+		struct exfat_de_iter *de_iter, struct exfat_inode **new)
+{
+	int ret, i;
+	struct exfat_inode *inode;
+	struct exfat_dentry *dentry, *de_stream;
+
+	exfat_de_iter_get(de_iter, 0, &dentry);
+	ret = exfat_de_iter_get(de_iter, 1, &de_stream);
+	if (ret)
+		return ret;
+
+	inode = exfat_alloc_inode(le16_to_cpu(dentry->file_attr));
+	if (!inode)
+		return -ENOMEM;
+
+	inode->dev_offset = exfat_de_iter_device_offset(de_iter);
+	inode->dentry_count = DIV_ROUND_UP(de_stream->stream_name_len,
+			ENTRY_NAME_MAX) + 2;
+	inode->dentry_count = MAX(dentry->file_num_ext + 1,
+			inode->dentry_count);
+	inode->dentry_count = MAX(inode->dentry_count, 3);
+	inode->attr = le16_to_cpu(dentry->file_attr);
+
+	inode->dentry_set = calloc(inode->dentry_count, sizeof(*dentry));
+	if (!inode->dentry_set) {
+		ret = -ENOMEM;
+		goto free_inode;
+	}
+
+	inode->dentry_set[0] = *dentry;
+	inode->dentry_set[1] = *de_stream;
+
+	for (i = 2; i < inode->dentry_count; i++) {
+		ret = exfat_de_iter_get(de_iter, i, &dentry);
+		if (ret)
+			goto free_inode;
+
+		if (!IS_EXFAT_SEC(dentry->type)) {
+			if (i == 2) {
+				ret = -EINVAL;
+				goto free_inode;
+			}
+
+			inode->dentry_count = i;
+			break;
+		}
+
+		inode->dentry_set[i] = *dentry;
+		if (dentry->type == EXFAT_NAME)
+			memcpy(inode->name + (i - 2) * ENTRY_NAME_MAX,
+					dentry->name_unicode,
+					sizeof(dentry->name_unicode));
+	}
+
+	inode->first_clus = le32_to_cpu(de_stream->stream_start_clu);
+	inode->is_contiguous = de_stream->stream_flags & EXFAT_SF_CONTIGUOUS;
+	inode->size = le64_to_cpu(de_stream->stream_size);
+
+	*new = inode;
+
+	return 0;
+
+free_inode:
+	exfat_free_inode(inode);
+
+	return ret;
+}
+
+/*
+ * Scan and print the directory sets in a directory
+ *
+ * Input:
+ *   dir: the inode of the directory.
+ *   path: the path of the directory.
+ *   flags: If DUMP_SCAN_DIR_RECURSIVE is set, scan and print directory entry
+ *         sets recursively.
+ */
+static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
+		const char *path, uint32_t flags)
+{
+	int ret, dentry_count, len;
+	struct buffer_desc *scan_bdesc;
+	struct exfat_de_iter de_iter;
+	struct exfat_dentry *dentry;
+	struct exfat_inode *inode;
+	char new_path[PATH_MAX];
+
+	scan_bdesc = exfat_alloc_buffer(exfat);
+	if (!scan_bdesc)
+		return -ENOMEM;
+
+	ret = exfat_de_iter_init(&de_iter, exfat, dir, scan_bdesc);
+	if (ret == EOF) {
+		ret = 0;
+		goto free_buffer;
+	} else if (ret)
+		goto free_buffer;
+
+	while (1) {
+		ret = exfat_de_iter_get(&de_iter, 0, &dentry);
+		if (ret == EOF) {
+			ret = 0;
+			goto free_buffer;
+		} else if (ret)
+			goto free_buffer;
+
+		dentry_count = 1;
+		if (dentry->type == EXFAT_FILE) {
+			ret = exfat_create_inode(exfat, &de_iter, &inode);
+			if (ret == EOF) {
+				ret = 0;
+				goto free_buffer;
+			} else if (ret)
+				goto free_buffer;
+
+			exfat_info("-----------------------------------------------------\n");
+
+			len = snprintf(new_path, sizeof(new_path), "%s/", path);
+			if (dir->first_clus == exfat->root->first_clus)
+				len = 1;
+
+			ret = exfat_utf16_dec(inode->name, NAME_BUFFER_SIZE,
+					new_path + len, sizeof(new_path) - len);
+			if (ret < 0)
+				snprintf(new_path + len, sizeof(new_path) - len,
+						"<invalid>");
+
+			exfat_info("Path: %s\n", new_path);
+			exfat_show_dentry_set(exfat, inode, dir->is_contiguous);
+			if ((inode->attr & ATTR_SUBDIR) &&
+			    (flags & DUMP_SCAN_DIR_RECURSIVE)) {
+				ret = exfat_scan_dentry_set(exfat, inode,
+						new_path, flags);
+				if (ret) {
+					exfat_free_inode(inode);
+					goto free_buffer;
+				}
+			}
+			dentry_count = inode->dentry_count;
+			exfat_free_inode(inode);
+		} else if (dentry->type & EXFAT_INVAL) {
+			exfat_info("-----------------------------------------------------\n");
+			exfat_info("Directory: %s\n", path);
+			exfat_show_dentry(exfat, dentry, 0,
+					exfat_de_iter_device_offset(&de_iter));
+		}
+
+		ret = exfat_de_iter_advance(&de_iter, dentry_count);
+		if (ret)
+			goto free_buffer;
+	}
+
+free_buffer:
+	exfat_free_buffer(exfat, scan_bdesc);
+
+	return ret;
+}
+
+static int exfat_show_dentry_set_by_path(struct exfat *exfat, const char *path,
+		uint32_t flags)
 {
 	int ret;
 	bool dir_is_contiguous;
@@ -576,9 +756,20 @@ static int exfat_show_dentry_set_by_path(struct exfat *exfat, const char *path)
 	if (ret)
 		return ret;
 
+	if (flags & DUMP_SCAN_DIR) {
+		if ((inode->attr & ATTR_SUBDIR) == 0) {
+			ret = -EINVAL;
+			goto out;
+		}
+
+		ret = exfat_scan_dentry_set(exfat, inode, path, flags);
+		goto out;
+	}
+
 	exfat_info("\n");
 	exfat_show_dentry_set(exfat, inode, dir_is_contiguous);
 
+out:
 	exfat_free_inode(inode);
 	return ret;
 }
@@ -592,6 +783,7 @@ int main(int argc, char *argv[])
 	bool version_only = false;
 	struct exfat *exfat;
 	const char *path = NULL;
+	uint32_t flags = 0;
 
 	init_user_input(&ui);
 	ui.writeable = false;
@@ -600,13 +792,20 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "iVhd:", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "iVhd:s:r", opts, NULL)) != EOF)
 		switch (c) {
 		case 'V':
 			version_only = true;
 			break;
 		case 'd':
 			path = optarg;
+			break;
+		case 's':
+			path = optarg;
+			flags |= DUMP_SCAN_DIR;
+			break;
+		case 'r':
+			flags |= DUMP_SCAN_DIR_RECURSIVE;
 			break;
 		case '?':
 		case 'h':
@@ -634,7 +833,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (path)
-		ret = exfat_show_dentry_set_by_path(exfat, path);
+		ret = exfat_show_dentry_set_by_path(exfat, path, flags);
 	else
 		ret = exfat_show_fs_info(exfat);
 

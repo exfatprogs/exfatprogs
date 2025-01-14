@@ -7,12 +7,21 @@ dump.exfat \- Show on-disk information of exfat filesystem
 .B \-d
 .I file-path
 ]
+[
+.B \-s
+.I dir-path
+]
+[
+.B \-r
+]
 .I device
 .br
 .B dump.exfat \-V
 .SH DESCRIPTION
 .B dump.exfat
 Print on-disk information from given device that formatted by exFAT filesystem.
+
+Note: For printing information of directory entries, the absence of "double-link" does not indicate the cluster is not doubly allocated if the scan is not started from the root directory with the recursive option.
 
 .PP
 .SH OPTIONS
@@ -22,3 +31,9 @@ Prints the version number and exits.
 .TP
 .BR \-d ", " \-\-dentry-set=\fIpath\fR
 Print information of directory entries from a given path that exits in the given device.
+.TP
+.BR \-s ", " \-\-scan-dir=\fIdir-path\fR
+Scan and print information of directory entries from a given path that exits in the given device.
+.TP
+.BR \-r ", " \-\-recursive
+Scan and print information of directory entries from a given path recursively that exits in the given device. Only works with -s option.
