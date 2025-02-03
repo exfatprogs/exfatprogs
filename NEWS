@@ -1,3 +1,19 @@
+exfatprogs 1.2.7 - released 2025-02-03
+======================================
+
+NEW FEATURES :
+ * fsck.exfat: support repairing the upcase table.
+
+CHANGES :
+ * exfatprogs: make sure to load the tbl preprocessor
+   for man pages.
+
+BUG FIXES :
+ * exfatprogs: fix a double free memory error.
+ * dump.exfat: fix a constraint that volume label, bitmap,
+   upcase table must be located at the beginning of a root
+   directory.
+
 exfatprogs 1.2.6 - released 2024-11-20
 ======================================
 
