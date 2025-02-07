@@ -167,7 +167,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 		goto free_exfat;
 
 	if (ed.type == EXFAT_VOLUME) {
-		exfat_info("Volume label entry position: \t\t0x%lx\n", off);
+		exfat_info("Volume label entry position: \t\t0x%llx\n", (unsigned long long)off);
 		exfat_info("Volume label character count: \t\t%u\n", ed.vol_char_cnt);
 		volume_label = exfat_conv_volume_label(&ed);
 		if (!volume_label)
@@ -182,7 +182,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 		goto free_exfat;
 
 	if (ed.type == EXFAT_UPCASE) {
-		exfat_info("Upcase table entry position: \t\t0x%lx\n", off);
+		exfat_info("Upcase table entry position: \t\t0x%llx\n", (unsigned long long)off);
 		exfat_info("Upcase table start cluster: \t\t%x\n",
 				le32_to_cpu(ed.upcase_start_clu));
 		exfat_info("Upcase table size: \t\t\t%" PRIu64 "\n",
@@ -197,7 +197,7 @@ static int exfat_show_ondisk_all_info(struct exfat_blk_dev *bd)
 		bitmap_len = le64_to_cpu(ed.bitmap_size);
 		bitmap_clu = le32_to_cpu(ed.bitmap_start_clu);
 
-		exfat_info("Bitmap entry position: \t\t\t0x%lx\n", off);
+		exfat_info("Bitmap entry position: \t\t\t0x%llx\n", (unsigned long long)off);
 		exfat_info("Bitmap start cluster: \t\t\t%x\n", bitmap_clu);
 		exfat_info("Bitmap size: \t\t\t\t%llu\n", bitmap_len);
 
