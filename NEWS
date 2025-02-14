@@ -1,3 +1,15 @@
+exfatprogs 1.2.8 - released 2025-03-04
+======================================
+
+BUG FIXES :
+ * dump.exfat: fix an incorrect output of an entry
+   position in 32-bit system.
+ * mkfs.exfat: fill an oem sector with zero instead
+   of one.
+ * exfatprogs: fix compilation on musl based systems
+   due to loff_t type. And update the Github action
+   to validate builds on the system.
+
 exfatprogs 1.2.7 - released 2025-02-03
 ======================================
 
