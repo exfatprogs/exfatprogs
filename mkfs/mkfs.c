@@ -528,7 +528,6 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
 	int ret;
-	unsigned long long total_written = 0;
 	unsigned long long size;
 
 	if (ui->quick)
@@ -543,7 +542,7 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 	}
 
 	exfat_debug("zero out written size : %llu, disk size : %llu\n",
-		total_written, bd->size);
+		size, bd->size);
 	return 0;
 }
 
