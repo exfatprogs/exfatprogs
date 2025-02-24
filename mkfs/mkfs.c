@@ -177,14 +177,13 @@ static int exfat_write_oem_sector(struct exfat_blk_dev *bd,
 	int ret = 0;
 	unsigned int sec_idx = OEM_SEC_IDX;
 
-	oem = malloc(bd->sector_size);
+	oem = calloc(1, bd->sector_size);
 	if (!oem)
 		return -1;
 
 	if (is_backup)
 		sec_idx += BACKUP_BOOT_SEC_IDX;
 
-	memset(oem, 0xFF, bd->sector_size);
 	ret = exfat_write_sector(bd, oem, sec_idx);
 	if (ret) {
 		exfat_err("oem sector write failed\n");
@@ -195,8 +194,7 @@ static int exfat_write_oem_sector(struct exfat_blk_dev *bd,
 	boot_calc_checksum((unsigned char *)oem, bd->sector_size, false,
 		checksum);
 
-	/* Zero out reserved sector */
-	memset(oem, 0, bd->sector_size);
+	/* Reuse zeroed out oem sector for reserved sector */
 	ret = exfat_write_sector(bd, oem, sec_idx + 1);
 	if (ret) {
 		exfat_err("reserved sector write failed\n");
