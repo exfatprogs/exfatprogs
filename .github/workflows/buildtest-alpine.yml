@@ -1,0 +1,31 @@
+name: Container Buildtest Alpine
+
+on:
+  push:
+    branches:
+      - master
+      - exfat-next
+  pull_request:
+    branches:
+      - master
+      - exfat-next
+
+jobs:
+  container-build-alpine:
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Packages
+        run: apk --update add alpine-sdk autoconf libtool automake linux-headers bash xxd xz
+      - name: Autoconf and Configure
+        run: ./autogen.sh && ./configure
+      - name: Build
+        run: make -j$((`nproc`+1))
+      - name: Install
+        run: make install
+      - name: run fsck repair testcases
+        run: |
+          cd tests
+          ./test_fsck.sh

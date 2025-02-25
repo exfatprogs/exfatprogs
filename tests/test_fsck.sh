@@ -19,7 +19,7 @@ cleanup() {
 }
 
 if [ $# -eq 0 ]; then
-	TESTCASE_LIST=($(find . -name "${IMAGE_FILE}.tar.xz" | xargs dirname))
+	TESTCASE_LIST=($(find . -name "${IMAGE_FILE}.tar.xz" -exec dirname {} \;))
 	TESTCASE_LIST+=($(find . -name "[[:digit:]]*.sh" | sort))
 else
 	TESTCASE_LIST=($@)
