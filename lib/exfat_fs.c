@@ -118,7 +118,7 @@ void exfat_free_exfat(struct exfat *exfat)
 		if (exfat->root)
 			exfat_free_inode(exfat->root);
 		if (exfat->lookup_buffer)
-			free(exfat->lookup_buffer);
+			exfat_free_buffer(exfat, exfat->lookup_buffer);
 		free(exfat);
 	}
 }
