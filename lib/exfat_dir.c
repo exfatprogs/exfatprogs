@@ -333,6 +333,63 @@ int exfat_de_iter_advance(struct exfat_de_iter *iter, int skip_dentries)
 	return 0;
 }
 
+/* revert @num dentries from current dentry */
+int exfat_de_iter_revert(struct exfat_de_iter *iter, int num)
+{
+	int ret;
+	off_t file_offset;
+	clus_t clu_idx, clu;
+	unsigned int dest_block, cur_block;
+	unsigned int offset;
+	struct buffer_desc *cur_bd, *dest_bd;
+	struct exfat *exfat = iter->exfat;
+
+	if (iter->de_file_offset < num * DENTRY_SIZE)
+		return -EINVAL;
+
+	file_offset = iter->de_file_offset - num * DENTRY_SIZE;
+	dest_block = (unsigned int)(file_offset / iter->read_size);
+	cur_block = (unsigned int)(iter->de_file_offset / iter->read_size);
+
+	/* The entries are in the same buffer_desc */
+	if (dest_block == cur_block)
+		goto out;
+
+	cur_bd = exfat_de_iter_get_buffer(iter, cur_block);
+	dest_bd = exfat_de_iter_get_buffer(iter, dest_block);
+
+	clu_idx = file_offset / exfat->clus_size;
+	if (clu_idx < iter->de_file_offset / exfat->clus_size) {
+		/* The entries are not in the same cluster */
+		ret = exfat_get_clus(exfat, iter->parent, clu_idx, &clu);
+		if (ret < 0)
+			return ret;
+	} else
+		clu = cur_bd->p_clus;
+
+	offset = (dest_block * iter->read_size) % exfat->clus_size;
+
+	/* the data of dest_block is in dest_bd */
+	if (dest_bd->p_clus == clu && offset == dest_bd->offset)
+		goto out;
+
+	/* flush then read if the data of dest_block is not in dest_bd */
+	exfat_de_iter_flush(iter);
+	dest_bd->p_clus = clu;
+	dest_bd->offset = offset;
+
+	if (exfat_read(exfat->blk_dev->dev_fd, dest_bd->buffer, iter->read_size,
+			exfat_c2o(exfat, clu) + offset) != iter->read_size)
+		return -EIO;
+
+out:
+	iter->max_skip_dentries = 0;
+	iter->de_file_offset = file_offset;
+	iter->next_read_offset = (file_offset & ~(iter->read_size - 1)) + iter->read_size;
+
+	return 0;
+}
+
 off_t exfat_de_iter_device_offset(struct exfat_de_iter *iter)
 {
 	struct buffer_desc *bd;
