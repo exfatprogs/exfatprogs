@@ -181,6 +181,8 @@ unsigned int exfat_clus_to_blk_dev_off(struct exfat_blk_dev *bd,
 int exfat_get_next_clus(struct exfat *exfat, clus_t clus, clus_t *next);
 int exfat_get_inode_next_clus(struct exfat *exfat, struct exfat_inode *node,
 			      clus_t clus, clus_t *next);
+int exfat_get_clus(struct exfat *exfat, struct exfat_inode *node,
+		clus_t index, clus_t *ret_clu);
 int exfat_set_fat(struct exfat *exfat, clus_t clus, clus_t next_clus);
 off_t exfat_s2o(struct exfat *exfat, off_t sect);
 off_t exfat_c2o(struct exfat *exfat, unsigned int clus);

@@ -54,7 +54,7 @@
 #define MSDOS_UNUSED		0x00	/* end of directory */
 
 #define EXFAT_LAST		0x00	/* end of directory */
-#define EXFAT_DELETE		~(0x80)
+#define EXFAT_DELETE		((~(0x80)) & 0xFF)
 #define IS_EXFAT_DELETED(x)	((x) < 0x80) /* deleted file (0x01~0x7F) */
 #define EXFAT_INVAL		0x80	/* invalid value */
 #define EXFAT_SEC		(EXFAT_INVAL | (1 << 6))

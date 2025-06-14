@@ -907,6 +907,30 @@ int exfat_get_next_clus(struct exfat *exfat, clus_t clus, clus_t *next)
 	return 0;
 }
 
+int exfat_get_clus(struct exfat *exfat, struct exfat_inode *node,
+		clus_t index, clus_t *ret_clu)
+{
+	int ret;
+	clus_t clu = node->first_clus;
+
+	if (node->is_contiguous) {
+		*ret_clu = clu + index;
+		return 0;
+	}
+
+	while (index) {
+		ret = exfat_get_next_clus(exfat, clu, &clu);
+		if (ret)
+			return ret;
+
+		index--;
+	}
+
+	*ret_clu = clu;
+
+	return 0;
+}
+
 int exfat_get_inode_next_clus(struct exfat *exfat, struct exfat_inode *node,
 			      clus_t clus, clus_t *next)
 {
