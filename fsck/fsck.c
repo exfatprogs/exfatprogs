@@ -995,12 +995,14 @@ static int read_bitmap(struct exfat *exfat)
 			DIV_ROUND_UP(exfat->clus_count, 8)) {
 		exfat_err("invalid size of allocation bitmap. 0x%" PRIx64 "\n",
 				le64_to_cpu(dentry->bitmap_size));
-		return -EINVAL;
+		retval = -EINVAL;
+		goto out;
 	}
 	if (!exfat_heap_clus(exfat, le32_to_cpu(dentry->bitmap_start_clu))) {
 		exfat_err("invalid start cluster of allocate bitmap. 0x%x\n",
 				le32_to_cpu(dentry->bitmap_start_clu));
-		return -EINVAL;
+		retval = -EINVAL;
+		goto out;
 	}
 
 	exfat->disk_bitmap_clus = le32_to_cpu(dentry->bitmap_start_clu);
@@ -1010,14 +1012,14 @@ static int read_bitmap(struct exfat *exfat)
 			       le32_to_cpu(dentry->bitmap_start_clu),
 			       DIV_ROUND_UP(exfat->disk_bitmap_size,
 					    exfat->clus_size));
-	free(filter.out.dentry_set);
-
 	if (exfat_read(exfat->blk_dev->dev_fd, exfat->disk_bitmap,
 			exfat->disk_bitmap_size,
 			exfat_c2o(exfat, exfat->disk_bitmap_clus)) !=
 			(ssize_t)exfat->disk_bitmap_size)
-		return -EIO;
-	return 0;
+		retval = -EIO;
+out:
+	free(filter.out.dentry_set);
+	return retval;
 }
 
 static int decompress_upcase_table(const __le16 *in_table, size_t in_len,
