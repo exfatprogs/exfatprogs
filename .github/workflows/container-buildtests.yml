@@ -36,7 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Packages
-        run: apt update && apt -y install clang lld pkgconf xxd autoconf libtool automake make xz-utils
+        run: |
+          apt-get --update --quiet --yes install \
+            clang lld pkgconf xxd autoconf \
+            libtool automake make xz-utils
       - name: Autoconf and Configure
         run: |
           export LDFLAGS="-fuse-ld=lld"
