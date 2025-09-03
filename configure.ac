@@ -32,6 +32,7 @@ AC_CONFIG_FILES([
 	label/Makefile
 	dump/Makefile
 	exfat2img/Makefile
+	defrag/Makefile
 ])
 
 AC_OUTPUT

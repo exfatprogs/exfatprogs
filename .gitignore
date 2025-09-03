@@ -48,3 +48,4 @@ autom4te.cache
 /label/exfatlabel
 /mkfs/mkfs.exfat
 /tune/tune.exfat
+/defrag/defrag.exfat

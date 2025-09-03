@@ -10,6 +10,7 @@ cc_library_headers {
         "label",
         "dump",
 	"exfat2img",
+        "defrag",
     ],
 }
 

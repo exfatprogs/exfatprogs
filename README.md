@@ -96,6 +96,15 @@ Usage example:
 Usage example:
     exfat2img -o sda1.dump /dev/sda1
 
+- defrag.exfat:
+  Defragment an exFAT-formatted device, or assess its fragmentation status.
+
+Usage examples:
+  1. Defragment an exFAT-formatted device:
+        defrag.exfat /dev/sda1
+  2. Assess fragmentation status of an exFAT-formatted device:
+        defrag.exfat -a /dev/sda1
+
 ```
 
 ## Benchmarks
