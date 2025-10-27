@@ -28,7 +28,7 @@
 /*----------------------- Part 0: Signal Handling ---------------------*/
 
 /* Global interrupt flag */
-static sig_atomic_t interrupt_received;
+static volatile sig_atomic_t interrupt_received;
 
 /* Index at which interruption occurred */
 static uint32_t interrupt_point;
@@ -117,14 +117,14 @@ static int exfat_rw_bitmap(struct exfat *exfat, bool read)
 	/* Perform read or write operation */
 	if (read) {
 		rw_len = exfat_read(exfat->blk_dev->dev_fd, exfat->alloc_bitmap,
-				    exfat->disk_bitmap_size,
-				    exfat_c2o(exfat, exfat->disk_bitmap_clus));
+					exfat->disk_bitmap_size,
+					exfat_c2o(exfat, exfat->disk_bitmap_clus));
 		if (rw_len != exfat->disk_bitmap_size)
 			return -EIO;
 	} else {
 		rw_len = exfat_write(exfat->blk_dev->dev_fd, exfat->alloc_bitmap,
-				     exfat->disk_bitmap_size,
-				     exfat_c2o(exfat, exfat->disk_bitmap_clus));
+					exfat->disk_bitmap_size,
+					exfat_c2o(exfat, exfat->disk_bitmap_clus));
 		if (rw_len != exfat->disk_bitmap_size)
 			return -EIO;
 	}
@@ -210,7 +210,7 @@ static int add_virtual_node(struct cluster_info_set *set, uint32_t data)
  * Sets FAT entries for a contiguous cluster chain to ensure correctness.
  */
 static int set_physical_nodes(struct cluster_info_set *set,
-				      uint32_t begin, uint32_t count, uint32_t data)
+					uint32_t begin, uint32_t count, uint32_t data)
 {
 	uint32_t i;
 
@@ -323,7 +323,7 @@ static int BFS_read_children(struct exfat_defrag *defrag, struct exfat_inode *in
 					FAT_entry_count =
 						(uint32_t)((size - 1) / defrag->exfat->clus_size);
 					if (set_physical_nodes(set, first_clu,
-							       FAT_entry_count, first_clu + 1) < 0)
+									FAT_entry_count, first_clu + 1) < 0)
 						goto fail;
 				}
 
@@ -379,7 +379,7 @@ static int BFS_read_children(struct exfat_defrag *defrag, struct exfat_inode *in
 					FAT_entry_count =
 						(uint32_t)((size - 1) / defrag->exfat->clus_size);
 					if (set_physical_nodes(set, first_clu,
-							       FAT_entry_count, first_clu + 1) < 0)
+									FAT_entry_count, first_clu + 1) < 0)
 						goto fail;
 				}
 			}
@@ -831,7 +831,8 @@ static int exfat_defrag(struct exfat_defrag *defrag)
 	uint32_t scan_ptr = EXFAT_RESERVED_CLUSTERS, exchanged_ptr = 0;
 	uint32_t i;
 
-	exfat_info("Defragmentation is in progress — please keep the device connected.\n");
+	exfat_info("Defragmentation is in progress -- please keep the device connected.\n");
+	exfat_info("WARNING: Removing or powering off the device during execution may corrupt the file system.\n");
 	exfat_info("If you do not want to wait, just press Ctrl+C to terminate it safely.\n");
 
 	for (i = n_clus; i < n_clus + n_file; i++) {
@@ -896,7 +897,7 @@ static void exfat_defrag_assess(struct exfat_defrag *defrag)
 	/* 2. Assess free cluster contiguity */
 	last_clu = 0;
 	for (cur_clu = EXFAT_FIRST_CLUSTER; cur_clu < exfat->clus_count + EXFAT_FIRST_CLUSTER;
-	     cur_clu++) {
+			cur_clu++) {
 		if (!exfat_bitmap_get(exfat->alloc_bitmap, cur_clu)) {
 			num_free_clus++;
 			if (last_clu != 0 && cur_clu != last_clu + 1)
@@ -999,7 +1000,7 @@ int main(int argc, char *argv[])
 			break;
 		default:
 			exfat_err("Invalid command! Please refer to the help information below or consult the manual.\n");
-			usage(argv[0], -1);
+			usage(argv[0], 2);
 		}
 	}
 
@@ -1009,7 +1010,7 @@ int main(int argc, char *argv[])
 
 	if (optind != argc - 1) {
 		exfat_err("Invalid command! Please refer to the help information below or consult the manual.\n");
-		usage(argv[0], -1);
+		usage(argv[0], 2);
 	}
 
 	if ((!only_assessment) && show_fsck_warning) {
@@ -1018,18 +1019,10 @@ int main(int argc, char *argv[])
 		exfat_info("Proceed without filesystem check? [y/N]: ");
 		fflush(stdout);
 
-		while (1) {
-			c = fgetc(stdin);
-			if (c == 'Y' || c == 'y') {
-				exfat_info("\n");
-				break;
-			} else if (c == 'N' || c == 'n') {
-				return 0;
-			} else if (c == '\n' || c == ' ' || c == '\t') {
-				continue;
-			} else {
-				exfat_info("Sorry, please enter 'Y' or 'y' or 'N' or 'n':");
-			}
+		c = fgetc(stdin);
+		if (!(c == 'Y' || c == 'y')) {
+			exfat_info("Defrag aborted.\n");
+			return 1;
 		}
 	}
 
@@ -1041,7 +1034,7 @@ int main(int argc, char *argv[])
 		ui.writeable = true;
 	if (exfat_get_blk_dev_info(&ui, &bd) < 0) {
 		exfat_err("fail in exfat_get_blk_dev_info\n");
-		ret = -1;
+		ret = 1;
 		goto out;
 	}
 
@@ -1050,7 +1043,7 @@ int main(int argc, char *argv[])
 	defrag.exfat = exfat_alloc_exfat(&bd, NULL, NULL);
 	if (defrag.exfat == NULL) {
 		exfat_err("fail in exfat_alloc_exfat\n");
-		ret = -1;
+		ret = 1;
 		goto out;
 	}
 
@@ -1060,92 +1053,88 @@ int main(int argc, char *argv[])
 	set->next_clus = calloc(set->num_phys_clus, sizeof(uint32_t));
 	if (set->next_clus == NULL) {
 		exfat_err("memory run out in defrag.cluster_info_set->next_clus\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 	defrag.tmp_clus = calloc(2, defrag.exfat->clus_size);
 	if (defrag.tmp_clus == NULL) {
 		exfat_err("memory run out in defrag.tmp_clus\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 	defrag.dentry_buffer = exfat_alloc_buffer(defrag.exfat);
 	if (defrag.dentry_buffer == NULL) {
 		exfat_err("memory run out in defrag.dentry_buffer\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 
 	/* Step 4: Read bitmap and FAT */
 	if (exfat_rw_bitmap(defrag.exfat, true) < 0) {
 		exfat_err("fail in exfat_read_bitmap\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 	if (exfat_rw_FAT(defrag.exfat, set->next_clus, set->num_phys_clus, true) < 0) {
 		exfat_err("fail in exfat_read_FAT\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 
 	/* Step 5: Traverse file tree (BFS), collect first cluster info into virtual nodes */
 	if (BFS_read_file_tree(&defrag) < 0) {
 		exfat_err("fail in BFS_read_file_tree\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 
 	/* For fragmentation assessment, reaching this step is sufficient */
 	if (only_assessment) {
 		exfat_defrag_assess(&defrag);
-		goto fsycn_and_free;
+		goto fsync_and_free;
 	}
 
 	/* Step 6: Allocate prev_clus array and build backward links */
 	set->prev_clus = calloc(set->num_phys_clus + set->num_clus_chain, sizeof(uint32_t));
 	if (set->prev_clus == NULL) {
 		exfat_err("memory run out in defrag.cluster_info_set->prev_clus\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 	next_to_prev(set);
 
 	/* Step 7: Perform defragmentation with interrupt support */
 	interrupt_point = 0;
 	interrupt_received = 0;
-	if (signal(SIGINT, sigint_handler) == SIG_ERR ||
-	    signal(SIGTERM, sigint_handler) == SIG_ERR) {
-		exfat_err("fail in signal register\n");
-		ret = -1;
-		goto fsycn_and_free;
-	}
+	signal(SIGINT, sigint_handler);
+	signal(SIGTERM, sigint_handler);
 
 	if (exfat_defrag(&defrag) < 0) {
 		exfat_err("fail in exfat_defrag\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 
 	/* Step 8: Rewrite first cluster and contiguous flags in directory entries */
 	if (BFS_write_file_tree(&defrag) < 0) {
 		exfat_err("fail in BFS_write_file_tree\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 
 	/* Step 9: Write back updated bitmap and FAT */
 	if (exfat_rw_bitmap(defrag.exfat, false) < 0) {
 		exfat_err("fail in exfat_write_bitmap\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 	if (exfat_rw_FAT(defrag.exfat, set->next_clus, set->num_phys_clus, false) < 0) {
 		exfat_err("fail in exfat_write_FAT\n");
-		ret = -1;
-		goto fsycn_and_free;
+		ret = 1;
+		goto fsync_and_free;
 	}
 
-fsycn_and_free:
+fsync_and_free:
 	/* Step 10: fsync and free allocated resources */
 	fsync(bd.dev_fd);
 
