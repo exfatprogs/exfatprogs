@@ -15,17 +15,17 @@ defrag.exfat \- Defragment or assess fragmentation on an exFAT filesystem
 
 .SH DESCRIPTION
 .B defrag.exfat
-is a utility to defragment files on an exFAT-formatted device or assess its current fragmentation status.
+is a utility to defragment files on an exFAT-formatted device or assess its fragmentation status.
 
-Defragmentation reorganizes scattered file clusters into contiguous blocks, which may improve I/O performance — especially on mechanical storage devices.
-
-By default, when no option is specified, the tool will prompt the user with a warning recommending to run \fBfsck.exfat\fR first to ensure filesystem consistency.
+When no option is specified, the tool warns the user to run \fBfsck.exfat\fR first for filesystem consistency.
 
 This safety prompt can be bypassed using the \fB\-f\fR option.
 
 The \fB\-a\fR option enables assessment mode, which analyzes fragmentation without modifying the filesystem.
 
-The target device must be \fIunmounted\fR before running this command.
+\fBdefrag.exfat\fR provides whole-disk defragmentation based on cluster swapping, which incurs a certain amount of wear overhead on flash-based storage devices with low fragmentation levels.
+
+Therefore, it is recommended to use \fBdefrag.exfat\fR on mechanical hard disk drives (HDDs) or flash-based devices that exhibit a relatively high degree of fragmentation.
 
 .SH OPTIONS
 .TP
@@ -73,6 +73,18 @@ $ defrag.exfat -h
 .EE
 
 .SH NOTES
-It is \fBstrongly recommended\fR to run \fBfsck.exfat\fR on the device before defragmenting to ensure filesystem integrity.
+Before defragmentation:
+.IP -
+The target device must be \fBunmounted\fR.
+.IP -
+Please run \fBfsck.exfat\fR on the target device to ensure filesystem integrity.
+.IP -
+Considering the potential risks of defragmentation, critical data should be \fBbacked up\fR in advance.
+.PP
 
-Always backup critical data before defragmenting.
+During defragmentation:
+.IP -
+Always keep the device \fBconnected and powered\fR.
+.IP -
+If the device is removed, powered off, or experiences a hardware failure, the filesystem may become corrupted.
+.PP

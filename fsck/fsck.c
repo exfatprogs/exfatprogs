@@ -980,6 +980,7 @@ static int read_bitmap(struct exfat *exfat)
 		.in.param	= NULL,
 	};
 	struct exfat_dentry *dentry;
+	uint64_t map_size, need_map_size;
 	int retval;
 
 	retval = exfat_lookup_dentry_set(exfat, exfat->root, &filter);
@@ -990,6 +991,20 @@ static int read_bitmap(struct exfat *exfat)
 	exfat_debug("start cluster %#x, size %#" PRIx64 "\n",
 			le32_to_cpu(dentry->bitmap_start_clu),
 			le64_to_cpu(dentry->bitmap_size));
+
+	/* Validate on-disk bitmap size and required size */
+	map_size = le64_to_cpu(dentry->bitmap_size);
+	need_map_size = DIV_ROUND_UP(exfat->clus_count, 8);
+	if (map_size != need_map_size &&
+		exfat_repair_ask(&exfat_fsck, ER_DE_BITMAP,
+				"ERROR: invalid bitmap size. %lld", map_size)) {
+		dentry->bitmap_size = cpu_to_le64(need_map_size);
+		if (pwrite(exfat->blk_dev->dev_fd, dentry, DENTRY_SIZE,
+				filter.out.dev_offset) != DENTRY_SIZE) {
+			exfat_err("failed to write bitmap dentry\n");
+			return -EIO;
+		}
+	}
 
 	if (le64_to_cpu(dentry->bitmap_size) <
 			DIV_ROUND_UP(exfat->clus_count, 8)) {
