@@ -275,9 +275,13 @@ int exfat_de_iter_get(struct exfat_de_iter *iter,
 
 	/* read next cluster if needed */
 	if (next_de_file_offset >= iter->next_read_offset) {
-		ret = read_block(iter, block);
-		if (ret != (ssize_t)iter->read_size)
-			return ret;
+		if (read_block(iter, block) != (ssize_t)iter->read_size) {
+			struct buffer_desc *desc = exfat_de_iter_get_buffer(iter->exfat, block);
+			off_t device_offset = exfat_c2o(iter->exfat, desc->p_clus) + desc->offset;
+			exfat_err("failed to read from device at offset %llu\n",
+				  (unsigned long long)device_offset);
+			return -EIO;
+		}
 		iter->next_read_offset += iter->read_size;
 	}
 
