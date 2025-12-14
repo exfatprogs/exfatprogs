@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <time.h>
+#include <inttypes.h>
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
@@ -261,7 +262,6 @@ int exfat_de_iter_get(struct exfat_de_iter *iter,
 			int ith, struct exfat_dentry **dentry)
 {
 	off_t next_de_file_offset;
-	ssize_t ret;
 	unsigned int block;
 	struct buffer_desc *bd;
 
@@ -275,9 +275,12 @@ int exfat_de_iter_get(struct exfat_de_iter *iter,
 
 	/* read next cluster if needed */
 	if (next_de_file_offset >= iter->next_read_offset) {
-		ret = read_block(iter, block);
-		if (ret != (ssize_t)iter->read_size)
-			return ret;
+		if (read_block(iter, block) != (ssize_t)iter->read_size) {
+			exfat_err("failed to read from device at offset %#" PRIx64 "\n",
+				  exfat_de_iter_device_offset(iter));
+
+			return -EIO;
+		}
 		iter->next_read_offset += iter->read_size;
 	}
 
