@@ -240,6 +240,17 @@ static int exfat_show_fs_info(struct exfat *exfat)
 	return 0;
 }
 
+static void exfat_free_inode_chain(struct exfat_inode *inode)
+{
+	struct exfat_inode *parent;
+
+	while (inode) {
+		parent = inode->parent;
+		exfat_free_inode(inode);
+		inode = parent;
+	}
+}
+
 /*
  * Get the first level file name from a given path
  *
@@ -253,28 +264,25 @@ static int exfat_show_fs_info(struct exfat *exfat)
  */
 static int get_name_from_path(const char *path, char *name, size_t name_size)
 {
-	int i;
-	int name_len = 0;
-	int path_len = strlen(path);
+	const char *p = path;
+	size_t len = 0;
 
-	if (path_len == 0)
-		return 0;
+	while (*p == '/')
+		p++;
 
-	for (i = 0; i <= path_len && name_len + 1 < name_size; i++, path++) {
-		if (*path == '/' || *path == '\0') {
-			if (name_len == 0)
-				continue;
-
-			name[name_len] = 0;
-			return i;
-		}
-
-		name[name_len] = *path;
-		name_len++;
+	if (*p == '\0') {
+		name[0] = '\0';
+		return p - path;
 	}
 
-	name[0] = 0;
-	return 0;
+	while (*p != '/' && *p != '\0') {
+		if (len + 1 < name_size)
+			name[len++] = *p;
+		p++;
+	}
+
+	name[len] = '\0';
+	return p - path;
 }
 
 /*
@@ -296,60 +304,91 @@ static int exfat_create_inode_by_path(struct exfat *exfat, const char *path,
 {
 	int len, ret;
 	char name[PATH_MAX + 1];
-	struct exfat_inode *inode;
+	struct exfat_inode *cur_inode, *new_inode, *tmp;
 	struct exfat_dentry *dentry_set;
 	struct exfat_lookup_filter filter;
 	const char *p_path = path;
 
-	inode = exfat_alloc_inode(ATTR_SUBDIR);
-	if (!inode)
+	cur_inode = exfat_alloc_inode(ATTR_SUBDIR);
+	if (!cur_inode)
 		return -ENOMEM;
 
-	*inode = *exfat->root;
-	*dir_is_contiguous = inode->is_contiguous;
+	cur_inode->parent = NULL;
+	*cur_inode = *exfat->root;
+	*dir_is_contiguous = cur_inode->is_contiguous;
 
-	do {
-		if ((inode->attr & ATTR_SUBDIR) == 0 && *p_path != '\0') {
+	while (*p_path) {
+		if ((cur_inode->attr & ATTR_SUBDIR) == 0 && *p_path != '\0') {
 			ret = -ENOENT;
 			goto free_inode;
 		}
 
 		len = get_name_from_path(p_path, name, sizeof(name));
 		p_path += len;
-		if (name[0] == '\0' || len == 0) {
-			*new = inode;
-			return 0;
+		if (name[0] == '\0' || len == 0)
+			goto out;
+
+		if (strcmp(name, ".") == 0)
+			continue;
+
+		if (strcmp(name, "..") == 0) {
+			if (!cur_inode->parent) {
+				ret = -EINVAL;
+				goto free_inode;
+			}
+			tmp = cur_inode;
+			cur_inode = cur_inode->parent;
+			exfat_free_inode(tmp);
+			continue;
 		}
 
-		ret = exfat_utf16_enc(name, inode->name, NAME_BUFFER_SIZE);
-		if (ret < 0)
+		new_inode = exfat_alloc_inode(ATTR_SUBDIR);
+		if (!new_inode) {
+			ret = -ENOMEM;
 			goto free_inode;
+		}
 
-		ret = exfat_lookup_file_by_utf16name(exfat, inode, inode->name,
+		new_inode->parent = cur_inode;
+
+		ret = exfat_utf16_enc(name, new_inode->name, NAME_BUFFER_SIZE);
+		if (ret < 0) {
+			exfat_free_inode(new_inode);
+			goto free_inode;
+		}
+
+		ret = exfat_lookup_file_by_utf16name(exfat, cur_inode, new_inode->name,
 						     &filter);
 		if (ret) {
 			if (ret == EOF)
 				ret = -ENOENT;
+			exfat_free_inode(new_inode);
 			goto free_inode;
 		}
 
+		/* fill new inode from lookup result */
 		dentry_set = filter.out.dentry_set;
-		if (inode->dentry_set)
-			free(inode->dentry_set);
-		inode->dentry_set = dentry_set;
-		inode->dev_offset = filter.out.dev_offset;
-		inode->dentry_count = filter.out.dentry_count;
-		inode->attr = dentry_set[0].file_attr;
-		inode->first_clus = le32_to_cpu(dentry_set[1].stream_start_clu);
-		*dir_is_contiguous = inode->is_contiguous;
-		inode->is_contiguous =
+		new_inode->dentry_set = dentry_set;
+		new_inode->dev_offset = filter.out.dev_offset;
+		new_inode->dentry_count = filter.out.dentry_count;
+		new_inode->attr = dentry_set[0].file_attr;
+		new_inode->first_clus = le32_to_cpu(dentry_set[1].stream_start_clu);
+		new_inode->is_contiguous =
 			(dentry_set[1].stream_flags & EXFAT_SF_CONTIGUOUS);
-		inode->size = le64_to_cpu(dentry_set[1].stream_size);
-	} while (1);
+		new_inode->size = le64_to_cpu(dentry_set[1].stream_size);
+
+		cur_inode = new_inode;
+	}
+
+out:
+	if (cur_inode->parent) {
+		*dir_is_contiguous = cur_inode->parent->is_contiguous;
+		exfat_free_inode_chain(cur_inode->parent);
+	}
+	*new = cur_inode;
+	return 0;
 
 free_inode:
-	exfat_free_inode(inode);
-
+	exfat_free_inode_chain(cur_inode);
 	return ret;
 }
 
