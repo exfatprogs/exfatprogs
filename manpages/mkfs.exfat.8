@@ -16,6 +16,8 @@ mkfs.exfat \- create an exFAT filesystem
 ] [
 .B \-f
 ] [
+.B \-C
+] [
 .B \-h
 ] [
 .B \-L
@@ -103,6 +105,16 @@ _
 .BR \-f ", " \-\-full\-format
 Performs a full format.
 This zeros the entire disk device while creating the exFAT filesystem.
+.TP
+.BR \-C ", " \-\-verify\-written
+Verify filesystem metadata by reading it back after writing.
+This option performs read-back verification of critical exFAT metadata
+(boot record, FAT, allocation bitmap, upcase table, and root directory)
+after each formatting stage.
+It is useful for detecting broken storage devices or devices that falsely
+report successful writes without actually persisting data.
+This option may slightly degrade formatting performance and is therefore
+disabled by default.
 .TP
 .BR \-h ", " \-\-help
 Prints the help and exit.

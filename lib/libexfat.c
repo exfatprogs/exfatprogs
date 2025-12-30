@@ -3,6 +3,9 @@
  *   Copyright (C) 2019 Namjae Jeon <linkinjeon@kernel.org>
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -206,6 +209,16 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 
 	ret = 0;
 	bd->dev_fd = fd;
+
+	if (ui->verify) {
+		bd->verify_fd = open(ui->dev_name, O_RDONLY|O_DIRECT);
+		if (bd->verify_fd < 0) {
+			exfat_err("open %s O_DIRECT failed:%s\n", ui->dev_name,
+				strerror(errno));
+			close(fd);
+			ret = -1;
+		}
+	}
 out:
 	return ret;
 }
@@ -684,6 +697,45 @@ out:
 	return err;
 }
 
+int exfat_check_written_data(struct exfat_blk_dev *bd,
+				const void *buf, size_t len,
+				off_t off, const char *what)
+{
+	void *verify;
+	ssize_t n;
+	size_t sector = bd->sector_size;
+	int ret = 0;
+
+	ret = fsync(bd->dev_fd);
+	if (ret)
+		return ret;
+
+	off_t aligned_off = off & ~(sector - 1);
+	size_t head = off - aligned_off;
+	size_t aligned_len = ((head + len + sector - 1) / sector) * sector;
+
+	if (posix_memalign(&verify, sector, aligned_len))
+		return -ENOMEM;
+	memset(verify, 0, aligned_len);
+
+	n = exfat_read(bd->verify_fd, verify, aligned_len, aligned_off);
+	if (n != (ssize_t)aligned_len) {
+		exfat_debug("%s verify read failed (off=%llu, len=%zu)\n",
+					what, (unsigned long long)aligned_off,
+					aligned_len);
+		ret = -EIO;
+	}
+
+	if (memcmp(buf, (unsigned char *)verify + head, len) != 0) {
+		exfat_debug("%s verify mismatch (off=%llu)\n",
+					what, (unsigned long long)off);
+		ret = -EIO;
+	}
+
+	free(verify);
+	return ret;
+}
+
 int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned int sec_off)
 {
 	int ret;
@@ -715,7 +767,8 @@ int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
 }
 
 int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
-		unsigned int checksum, bool is_backup)
+		struct exfat_user_input *ui, unsigned int checksum,
+		bool is_backup)
 {
 	__le32 *checksum_buf;
 	int ret = 0;
@@ -736,6 +789,17 @@ int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
 	if (ret) {
 		exfat_err("checksum sector write failed\n");
 		goto free;
+	}
+
+	if (ui && ui->verify) {
+		ret = exfat_check_written_data(bd,
+				checksum_buf, bd->sector_size,
+				sec_idx * bd->sector_size,
+				"checksum sector");
+		if (ret) {
+			exfat_err("checksum sector verification failed (read-back mismatch)\n");
+			goto free;
+		}
 	}
 
 free:
@@ -775,7 +839,8 @@ free_ppbr:
 	return ret;
 }
 
-static int exfat_update_boot_checksum(struct exfat_blk_dev *bd, bool is_backup)
+static int exfat_update_boot_checksum(struct exfat_blk_dev *bd,
+	struct exfat_user_input *ui, bool is_backup)
 {
 	unsigned int checksum = 0;
 	int ret, sec_idx, backup_sec_idx = 0;
@@ -807,7 +872,7 @@ static int exfat_update_boot_checksum(struct exfat_blk_dev *bd, bool is_backup)
 			&checksum);
 	}
 
-	ret = exfat_write_checksum_sector(bd, checksum, is_backup);
+	ret = exfat_write_checksum_sector(bd, ui, checksum, is_backup);
 
 free_buf:
 	free(buf);
@@ -861,13 +926,13 @@ int exfat_set_volume_serial(struct exfat_blk_dev *bd,
 		goto free_ppbr;
 	}
 
-	ret = exfat_update_boot_checksum(bd, 0);
+	ret = exfat_update_boot_checksum(bd, ui, 0);
 	if (ret < 0) {
 		exfat_err("main checksum update failed\n");
 		goto free_ppbr;
 	}
 
-	ret = exfat_update_boot_checksum(bd, 1);
+	ret = exfat_update_boot_checksum(bd, ui, 1);
 	if (ret < 0)
 		exfat_err("backup checksum update failed\n");
 free_ppbr:
