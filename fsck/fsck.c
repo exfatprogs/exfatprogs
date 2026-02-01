@@ -936,7 +936,7 @@ skip_dset:
 			break;
 		if (need_delete) {
 			exfat_de_iter_get_dirty(iter, i, &dentry);
-			dentry->type &= EXFAT_DELETE;
+			dentry->type = EXFAT_DELETE;
 		}
 	}
 	*skip_dentries = i;
@@ -1424,7 +1424,7 @@ static int read_children(struct exfat_fsck *fsck, struct exfat_inode *dir)
 				struct exfat_dentry *dentry;
 
 				exfat_de_iter_get_dirty(de_iter, 0, &dentry);
-				dentry->type &= EXFAT_DELETE;
+				dentry->type = EXFAT_DELETE;
 			}
 			break;
 		}
