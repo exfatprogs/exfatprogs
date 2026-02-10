@@ -423,8 +423,10 @@ char *exfat_conv_volume_label(struct exfat_dentry *vol_entry)
 	__le16 disk_label[VOLUME_LABEL_MAX_LEN];
 
 	volume_label = malloc(VOLUME_LABEL_BUFFER_SIZE);
-	if (!volume_label)
+	if (!volume_label) {
+		exfat_err("Cannot allocate volume_label: out of memory\n");
 		return NULL;
+	}
 
 	memcpy(disk_label, vol_entry->vol_label, sizeof(disk_label));
 	memset(volume_label, 0, VOLUME_LABEL_BUFFER_SIZE);
@@ -776,8 +778,10 @@ int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
 	unsigned int sec_idx = CHECKSUM_SEC_IDX;
 
 	checksum_buf = malloc(bd->sector_size);
-	if (!checksum_buf)
+	if (!checksum_buf) {
+		exfat_err("Cannot allocate checksum_buf: out of memory\n");
 		return -1;
+	}
 
 	if (is_backup)
 		sec_idx += BACKUP_BOOT_SEC_IDX;

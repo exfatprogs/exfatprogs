@@ -127,5 +127,5 @@ int main(int argc, char *argv[])
 close_fd_out:
 	close(bd.dev_fd);
 out:
-	return ret;
+	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
 }
