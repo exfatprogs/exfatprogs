@@ -157,8 +157,10 @@ static int exfat_write_extended_boot_sectors(struct exfat_blk_dev *bd,
 	unsigned int sec_idx = EXBOOT_SEC_IDX;
 
 	peb = malloc(bd->sector_size);
-	if (!peb)
+	if (!peb) {
+		exfat_err("Cannot allocate peb: out of memory\n");
 		return -1;
+	}
 
 	if (is_backup)
 		sec_idx += BACKUP_BOOT_SEC_IDX;
@@ -398,8 +400,10 @@ static int exfat_create_bitmap(struct exfat_blk_dev *bd,
 	int ret = 0;
 
 	bitmap = malloc(finfo.bitmap_byte_len);
-	if (!bitmap)
+	if (!bitmap) {
+		exfat_err("Cannot allocate bitmap: out of memory\n");
 		return -1;
+	}
 
 	full_bytes = finfo.used_clu_cnt / 8;
 	rem_bits = finfo.used_clu_cnt % 8;
@@ -884,5 +888,5 @@ out:
 		exfat_info("\nexFAT format complete!\n");
 	else
 		exfat_err("\nexFAT format fail!\n");
-	return ret;
+	return (ret ? EXIT_FAILURE : EXIT_SUCCESS);
 }

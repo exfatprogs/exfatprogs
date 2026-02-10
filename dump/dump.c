@@ -989,5 +989,5 @@ close_dev_fd:
 	close(bd.dev_fd);
 
 out:
-	return ret;
+	return (ret ? EXIT_FAILURE : EXIT_SUCCESS);
 }
