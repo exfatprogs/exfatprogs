@@ -16,6 +16,8 @@ fsck.exfat \- check an exFAT filesystem
 ] [
 .B \-b
 ] [
+.B \-P
+] [
 .B \-v
 ]
 .I device
@@ -58,6 +60,9 @@ Check the filesystem but do not attempt to repair the filesystem.
 .TP
 .BI \-p
 Repair the filesystem without user interaction if it can be done safely.
+.TP
+.BI \-P
+Show progress bar while checking the filesystem. Cannot be used with -r option.
 .TP
 .BI \-r
 Repair the filesystem interactively.
