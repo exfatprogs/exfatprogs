@@ -245,13 +245,11 @@ static int root_check_clus_chain(struct exfat *exfat,
 				 struct exfat_inode *node,
 				 clus_t *clus_count)
 {
-	clus_t clus, next, prev = EXFAT_EOF_CLUSTER;
+	clus_t clus = node->first_clus, next, prev = EXFAT_EOF_CLUSTER;
 
+	*clus_count = 0;
 	if (!exfat_heap_clus(exfat, node->first_clus))
 		goto out_trunc;
-
-	clus = node->first_clus;
-	*clus_count = 0;
 
 	do {
 		if (exfat_bitmap_get(exfat->alloc_bitmap, clus)) {
