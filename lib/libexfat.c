@@ -137,6 +137,7 @@ void init_user_input(struct exfat_user_input *ui)
 	memset(ui, 0, sizeof(struct exfat_user_input));
 	ui->writeable = true;
 	ui->quick = true;
+	ui->discard = true;
 }
 
 int exfat_get_blk_dev_info(struct exfat_user_input *ui,
@@ -165,6 +166,8 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 	if (fstat(fd, &st) == 0 && S_ISBLK(st.st_mode)) {
 		char pathname[sizeof("/sys/dev/block/4294967295:4294967295/start")];
 		FILE *fp;
+
+		bd->isblk = true;
 
 		snprintf(pathname, sizeof(pathname), "/sys/dev/block/%u:%u/start",
 			major(st.st_rdev), minor(st.st_rdev));
@@ -248,6 +251,15 @@ ssize_t exfat_write_zero(int fd, size_t size, off_t offset)
 		size -= iter_size;
 	}
 
+	return 0;
+}
+
+int exfat_discard_blocks(int fd, uint64_t start, uint64_t len)
+{
+	uint64_t range[2] = { start, len };
+
+	if (ioctl(fd, BLKDISCARD, &range) < 0)
+		return errno;
 	return 0;
 }
 

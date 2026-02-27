@@ -76,6 +76,7 @@ struct exfat_blk_dev {
 	unsigned long long num_sectors;
 	unsigned int num_clusters;
 	unsigned int cluster_size;
+	bool isblk;
 };
 
 struct exfat_user_input {
@@ -88,6 +89,7 @@ struct exfat_user_input {
 	bool pack_bitmap;
 	bool quick;
 	bool verify;
+	bool discard;
 	__u16 volume_label[VOLUME_LABEL_MAX_LEN];
 	int volume_label_len;
 	unsigned int volume_serial;
@@ -158,6 +160,7 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 ssize_t exfat_read(int fd, void *buf, size_t size, off_t offset);
 ssize_t exfat_write(int fd, void *buf, size_t size, off_t offset);
 ssize_t exfat_write_zero(int fd, size_t size, off_t offset);
+int exfat_discard_blocks(int fd, uint64_t start, uint64_t len);
 
 size_t exfat_utf16_len(const __le16 *str, size_t max_size);
 ssize_t exfat_utf16_enc(const char *in_str, __u16 *out_str, size_t out_size);

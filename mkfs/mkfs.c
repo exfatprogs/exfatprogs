@@ -521,6 +521,7 @@ static void usage(void)
 		"\t     --pack-bitmap                                     Move bitmap into FAT segment\n"
 		"\t-f | --full-format                                     Full format\n"
 		"\t-C | --check-written                                   Verify written filesystem metadata by read-back\n"
+		"\t-K | --no-discard                                      Do not discard blocks\n"
 		"\t-V | --version                                         Show version\n"
 		"\t-q | --quiet                                           Print only errors\n"
 		"\t-v | --verbose                                         Print debug\n"
@@ -541,6 +542,7 @@ static const struct option opts[] = {
 	{"pack-bitmap",		no_argument,		NULL,	PACK_BITMAP },
 	{"full-format",		no_argument,		NULL,	'f' },
 	{"check-written",	no_argument,		NULL,	'C' },
+	{"no-discard",		no_argument,		NULL,	'K' },
 	{"version",		no_argument,		NULL,	'V' },
 	{"quiet",		no_argument,		NULL,	'q' },
 	{"verbose",		no_argument,		NULL,	'v' },
@@ -666,6 +668,56 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 	return 0;
 }
 
+static void exfat_discard_dev(struct exfat_blk_dev *bd,
+		struct exfat_user_input *ui)
+{
+	uint64_t offset = 0;
+	uint64_t tmp_step;
+	int err;
+	/* Discard the device 2G at a time */
+	const uint64_t step = 2ULL << 30;
+	const uint64_t count = bd->num_sectors * bd->sector_size;
+
+	if (!ui->discard || !bd->isblk) {
+		exfat_debug("no-discard requested or the device is a file\n");
+		return;
+	}
+
+	/*
+	 * The block discarding happens in smaller batches so it can be
+	 * interrupted prematurely
+	 */
+	while (offset < count) {
+		tmp_step = count - offset;
+		if (step < tmp_step)
+			tmp_step = step;
+
+		err = exfat_discard_blocks(bd->dev_fd, offset, tmp_step);
+		/*
+		 * We intentionally ignore errors from the discard ioctl. It is
+		 * not necessary for the mkfs functionality but just an
+		 * optimization. However we should stop on error.
+		 */
+		if (err == 0) {
+			if (offset == 0) {
+				exfat_info("Discarding blocks: ");
+				exfat_debug("BLKDISCARD: ");
+			}
+			exfat_debug("%"PRIu64"-%"PRIu64" ", offset, offset + tmp_step);
+			fflush(stdout);
+		} else {
+			exfat_debug("BLKDISCARD: %s\n", strerror(err));
+			if (offset > 0)
+				exfat_info("\n");
+			return;
+		}
+
+		offset += tmp_step;
+	}
+	if (offset > 0)
+		exfat_info("done\n");
+}
+
 static int make_exfat(struct exfat_blk_dev *bd, struct exfat_user_input *ui)
 {
 	int ret;
@@ -753,7 +805,7 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:fCVqvh", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:fCKVqvh", opts, NULL)) != EOF)
 		switch (c) {
 		/*
 		 * Make 'n' option fallthrough to 'L' option for for backward
@@ -825,6 +877,9 @@ int main(int argc, char *argv[])
 		case 'C':
 			ui.verify = true;
 			break;
+		case 'K':
+			ui.discard = false;
+			break;
 		case 'V':
 			version_only = true;
 			break;
@@ -869,6 +924,12 @@ int main(int argc, char *argv[])
 	if (ret)
 		goto close;
 
+	exfat_discard_dev(&bd, &ui);
+	/*
+	 * Zeroing out still needs to be conducted as per JESD84-B51 6.6.9:
+	 * "content of an explicitly erased memory range shall be ‘0’ or ‘1’
+	 * depending on different memory technology,"
+	 */
 	ret = exfat_zero_out_disk(&bd, &ui);
 	if (ret)
 		goto close;
