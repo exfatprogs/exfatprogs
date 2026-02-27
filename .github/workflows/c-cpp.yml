@@ -23,7 +23,7 @@ jobs:
              linux-headers-$(uname -r) xz-utils \
              gcc-mips-linux-gnu qemu-system-mips \
              qemu-user
-        git clone https://github.com/namjaejeon/linux-exfat-oot
+        sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
     - name: build test & install exfatprogs
@@ -46,12 +46,8 @@ jobs:
         sudo -E ./test_fsck.sh
     - name: create file/director test
       run: |
-        cd linux-exfat-oot
-        make > /dev/null
-        sudo make install > /dev/null
         sudo modprobe exfat
         sudo mkdir -p /mnt/test
-        cd ..
         truncate -s 10G test.img
         sudo losetup /dev/loop22 test.img
         sudo mkfs.exfat /dev/loop22
