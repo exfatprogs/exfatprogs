@@ -1,0 +1,87 @@
+.TH lsdosattr 1
+.SH NAME
+lsdosattr \- list DOS file attributes
+.SH SYNOPSIS
+.B lsdosattr
+[
+.B \-RadlVh
+]
+[
+.I FILES...
+]
+.SH DESCRIPTION
+.P
+.B lsdosattr
+lists the DOS attributes, size and VDL(valid data length) of files. The DOS
+attributes are
+.IP
+\fBr\fP (READONLY)
+.IP
+\fBh\fP (HIDDEN)
+.IP
+\fBs\fP (SYSTEM)
+.IP
+\fBv\fP (VOLUME)
+.IP
+\fBs\fP (DIRECTORY)
+.IP
+\fBa\fP (ARCHIVED)
+.P
+Each file is shown in 4 columns that represent the attributes, size, VDL of the
+file. When the option \fB\-l\fP is used, the columns are shown in the order of file
+name, size, VDL and long attributes.
+
+.SH OPTIONS
+.TP
+.B \-R
+List subdirectories recursively
+.TP
+.B \-a
+Do not ignore entries starting with a dot('.')
+.TP
+.B \-d
+List directories themselves, not their contents
+.TP
+.B \-l
+Use long attribute names instead of single character abbreviations
+.TP
+.B \-V
+Show version
+.TP
+.B \-h
+Show help
+
+.SH EXIT STATUS
+.TP
+.B 0
+on success
+.TP
+.B 1
+when no file could be listed
+.TP
+.B 2
+on usage error
+.TP
+.B 3
+when an error occurred but at least one file was successfully listed
+
+.SH NOTE
+.P
+Linux kernel does not provide a special interface for reading the VDL(valid data
+length). If the in-kernel exFAT implementation is "VDL-aware", the VDL offset is
+treated as the start of the "hole"(\fBSEEK_HOLE\fP) that ranges to EOF.
+Therefore, the approximate VDL can be inferred from \fBlseek\fP(2) and this is
+why \fBlsdosattr\fP merely prints the first hole it encounters as the VDL.
+
+.P
+In vFAT, exFAT and NTFS, only the READONLY attribute is controlled through owner
+write permission bit. Linux kernel always sets ARCHIVE on files it creates and
+modifies. HIDDEN and SYSTEM can only be controlled through \fB ioctl_fat\fP(2).
+\fBlsdosattr\fP(1) and \fBchdosattr\fP(1) are the wrappers for the ioctl.
+
+.SH SEE ALSO
+.BR lsattr (1),
+.BR ioctl_fat (2)
+and the documentation on
+.B ATTRIB
+command in Microsoft Windows and various DOS.
