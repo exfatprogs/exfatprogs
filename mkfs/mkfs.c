@@ -127,6 +127,17 @@ static int exfat_write_boot_sector(struct exfat_blk_dev *bd,
 		goto free_ppbr;
 	}
 
+	if (ui->verify) {
+		ret = exfat_check_written_data(bd,
+				ppbr, bd->sector_size,
+				sec_idx * bd->sector_size,
+				"boot sector");
+		if (ret) {
+			exfat_err("boot sector verification failed (read-back mismatch)\n");
+			goto free_ppbr;
+		}
+	}
+
 	boot_calc_checksum((unsigned char *)ppbr, bd->sector_size,
 		true, checksum);
 
@@ -136,7 +147,8 @@ free_ppbr:
 }
 
 static int exfat_write_extended_boot_sectors(struct exfat_blk_dev *bd,
-		unsigned int *checksum, bool is_backup)
+		struct exfat_user_input *ui, unsigned int *checksum,
+		bool is_backup)
 {
 	char *peb;
 	__le16 *peb_signature;
@@ -145,8 +157,10 @@ static int exfat_write_extended_boot_sectors(struct exfat_blk_dev *bd,
 	unsigned int sec_idx = EXBOOT_SEC_IDX;
 
 	peb = malloc(bd->sector_size);
-	if (!peb)
+	if (!peb) {
+		exfat_err("Cannot allocate peb: out of memory\n");
 		return -1;
+	}
 
 	if (is_backup)
 		sec_idx += BACKUP_BOOT_SEC_IDX;
@@ -161,6 +175,17 @@ static int exfat_write_extended_boot_sectors(struct exfat_blk_dev *bd,
 			goto free_peb;
 		}
 
+		if (ui->verify) {
+			ret = exfat_check_written_data(bd,
+					peb, bd->sector_size,
+					(sec_idx - 1) * bd->sector_size,
+					"extended boot sector");
+			if (ret) {
+				exfat_err("extended boot sector verification failed (read-back mismatch)\n");
+				goto free_peb;
+			}
+		}
+
 		boot_calc_checksum((unsigned char *) peb, bd->sector_size,
 			false, checksum);
 	}
@@ -171,7 +196,8 @@ free_peb:
 }
 
 static int exfat_write_oem_sector(struct exfat_blk_dev *bd,
-		unsigned int *checksum, bool is_backup)
+		struct exfat_user_input *ui, unsigned int *checksum,
+		bool is_backup)
 {
 	char *oem;
 	int ret = 0;
@@ -191,6 +217,17 @@ static int exfat_write_oem_sector(struct exfat_blk_dev *bd,
 		goto free_oem;
 	}
 
+	if (ui->verify) {
+		ret = exfat_check_written_data(bd,
+				oem, bd->sector_size,
+				sec_idx * bd->sector_size,
+				"oem sector");
+		if (ret) {
+			exfat_err("oem sector verification failed (read-back mismatch)\n");
+			goto free_oem;
+		}
+	}
+
 	boot_calc_checksum((unsigned char *)oem, bd->sector_size, false,
 		checksum);
 
@@ -200,6 +237,17 @@ static int exfat_write_oem_sector(struct exfat_blk_dev *bd,
 		exfat_err("reserved sector write failed\n");
 		ret = -1;
 		goto free_oem;
+	}
+
+	if (ui->verify) {
+		ret = exfat_check_written_data(bd,
+				oem, bd->sector_size,
+				(sec_idx + 1) * bd->sector_size,
+				"reserved sector");
+		if (ret) {
+			exfat_err("reserved sector verification failed (read-back mismatch)\n");
+			goto free_oem;
+		}
 	}
 
 	boot_calc_checksum((unsigned char *)oem, bd->sector_size, false,
@@ -219,18 +267,18 @@ static int exfat_create_volume_boot_record(struct exfat_blk_dev *bd,
 	ret = exfat_write_boot_sector(bd, ui, &checksum, is_backup);
 	if (ret)
 		return ret;
-	ret = exfat_write_extended_boot_sectors(bd, &checksum, is_backup);
+	ret = exfat_write_extended_boot_sectors(bd, ui, &checksum, is_backup);
 	if (ret)
 		return ret;
-	ret = exfat_write_oem_sector(bd, &checksum, is_backup);
+	ret = exfat_write_oem_sector(bd, ui, &checksum, is_backup);
 	if (ret)
 		return ret;
 
-	return exfat_write_checksum_sector(bd, checksum, is_backup);
+	return exfat_write_checksum_sector(bd, ui, checksum, is_backup);
 }
 
-static int write_fat_entry(int fd, __le32 clu,
-		unsigned long long offset)
+static int write_fat_entry(struct exfat_user_input *ui, int fd,
+		__le32 clu, unsigned long long offset)
 {
 	int nbyte;
 	off_t fat_entry_offset = finfo.fat_byte_off + (offset * sizeof(__le32));
@@ -240,6 +288,11 @@ static int write_fat_entry(int fd, __le32 clu,
 		exfat_err("write failed, offset : %llu, clu : %x\n",
 			offset, clu);
 		return -1;
+	}
+
+	if (ui->verify) {
+		memcpy(ui->fat_table_buff + offset * sizeof(__le32),
+			(__u8 *)&clu, sizeof(__le32));
 	}
 
 	return 0;
@@ -254,12 +307,12 @@ static int write_fat_entries(struct exfat_user_input *ui, int fd,
 	count = clu + round_up(length, ui->cluster_size) / ui->cluster_size;
 
 	for (; clu < count - 1; clu++) {
-		ret = write_fat_entry(fd, cpu_to_le32(clu + 1), clu);
+		ret = write_fat_entry(ui, fd, cpu_to_le32(clu + 1), clu);
 		if (ret)
 			return ret;
 	}
 
-	ret = write_fat_entry(fd, cpu_to_le32(EXFAT_EOF_CLUSTER), clu);
+	ret = write_fat_entry(ui, fd, cpu_to_le32(EXFAT_EOF_CLUSTER), clu);
 	if (ret)
 		return ret;
 
@@ -270,52 +323,87 @@ static int exfat_create_fat_table(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
 	int ret, clu;
+	unsigned int fat_table_entries = 0;
+
+	if (ui->verify) {
+		fat_table_entries =
+			EXFAT_FIRST_CLUSTER +
+			DIV_ROUND_UP(finfo.bitmap_byte_len, ui->cluster_size) +
+			DIV_ROUND_UP(finfo.ut_byte_len, ui->cluster_size) +
+			DIV_ROUND_UP(finfo.root_byte_len, ui->cluster_size);
+
+		ui->fat_table_buff = calloc(fat_table_entries, sizeof(__le32));
+		if (!ui->fat_table_buff)
+			return -ENOMEM;
+	}
 
 	/* fat entry 0 should be media type field(0xF8) */
-	ret = write_fat_entry(bd->dev_fd, cpu_to_le32(0xfffffff8), 0);
+	ret = write_fat_entry(ui, bd->dev_fd, cpu_to_le32(0xfffffff8), 0);
 	if (ret) {
 		exfat_err("fat 0 entry write failed\n");
-		return ret;
+		goto free_fat_table_buff;
 	}
 
 	/* fat entry 1 is historical precedence(0xFFFFFFFF) */
-	ret = write_fat_entry(bd->dev_fd, cpu_to_le32(0xffffffff), 1);
+	ret = write_fat_entry(ui, bd->dev_fd, cpu_to_le32(0xffffffff), 1);
 	if (ret) {
 		exfat_err("fat 1 entry write failed\n");
-		return ret;
+		goto free_fat_table_buff;
 	}
 
 	/* write bitmap entries */
 	clu = write_fat_entries(ui, bd->dev_fd, EXFAT_FIRST_CLUSTER,
 		finfo.bitmap_byte_len);
-	if (clu < 0)
-		return ret;
+	if (clu < 0) {
+		ret = clu;
+		goto free_fat_table_buff;
+	}
 
 	/* write upcase table entries */
 	clu = write_fat_entries(ui, bd->dev_fd, clu + 1, finfo.ut_byte_len);
-	if (clu < 0)
-		return ret;
+	if (clu < 0) {
+		ret = clu;
+		goto free_fat_table_buff;
+	}
 
 	/* write root directory entries */
 	clu = write_fat_entries(ui, bd->dev_fd, clu + 1, finfo.root_byte_len);
-	if (clu < 0)
-		return ret;
+	if (clu < 0) {
+		ret = clu;
+		goto free_fat_table_buff;
+	}
 
 	finfo.used_clu_cnt = clu + 1 - EXFAT_FIRST_CLUSTER;
 	exfat_debug("Total used cluster count : %d\n", finfo.used_clu_cnt);
 
+	if (ui->verify) {
+		ret = exfat_check_written_data(bd,
+				ui->fat_table_buff, fat_table_entries * sizeof(__le32),
+				finfo.fat_byte_off,
+				"fat table");
+		if (ret)
+			exfat_err("fat table verification failed (read-back mismatch)\n");
+	}
+
+free_fat_table_buff:
+	if (ui->verify)
+		free(ui->fat_table_buff);
 	return ret;
 }
 
-static int exfat_create_bitmap(struct exfat_blk_dev *bd)
+static int exfat_create_bitmap(struct exfat_blk_dev *bd,
+		struct exfat_user_input *ui)
 {
 	char *bitmap;
 	unsigned int full_bytes, rem_bits, zero_offset;
 	unsigned int nbytes;
+	int ret = 0;
 
 	bitmap = malloc(finfo.bitmap_byte_len);
-	if (!bitmap)
+	if (!bitmap) {
+		exfat_err("Cannot allocate bitmap: out of memory\n");
 		return -1;
+	}
 
 	full_bytes = finfo.used_clu_cnt / 8;
 	rem_bits = finfo.used_clu_cnt % 8;
@@ -338,6 +426,18 @@ static int exfat_create_bitmap(struct exfat_blk_dev *bd)
 			nbytes, finfo.bitmap_byte_len);
 		free(bitmap);
 		return -1;
+	}
+
+	if (ui->verify) {
+		ret = exfat_check_written_data(bd,
+				bitmap, finfo.bitmap_byte_len,
+				finfo.bitmap_byte_off,
+				"bitmap");
+		if (ret) {
+			exfat_err("bitmap verification failed (read-back mismatch)\n");
+			free(bitmap);
+			return ret;
+		}
 	}
 
 	free(bitmap);
@@ -396,6 +496,17 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 		return -1;
 	}
 
+	if (ui->verify) {
+		ret = exfat_check_written_data(bd,
+				ed, dentries_len,
+				finfo.root_byte_off,
+				"root directory");
+		if (ret) {
+			exfat_err("root directory verification failed (read-back mismatch)\n");
+			return ret;
+		}
+
+	}
 	return 0;
 }
 
@@ -409,6 +520,8 @@ static void usage(void)
 		"\t-b | --boundary-align=size(or suffixed by 'K' or 'M')  Specify boundary alignment\n"
 		"\t     --pack-bitmap                                     Move bitmap into FAT segment\n"
 		"\t-f | --full-format                                     Full format\n"
+		"\t-C | --check-written                                   Verify written filesystem metadata by read-back\n"
+		"\t-K | --no-discard                                      Do not discard blocks\n"
 		"\t-V | --version                                         Show version\n"
 		"\t-q | --quiet                                           Print only errors\n"
 		"\t-v | --verbose                                         Print debug\n"
@@ -428,6 +541,8 @@ static const struct option opts[] = {
 	{"boundary-align",	required_argument,	NULL,	'b' },
 	{"pack-bitmap",		no_argument,		NULL,	PACK_BITMAP },
 	{"full-format",		no_argument,		NULL,	'f' },
+	{"check-written",	no_argument,		NULL,	'C' },
+	{"no-discard",		no_argument,		NULL,	'K' },
 	{"version",		no_argument,		NULL,	'V' },
 	{"quiet",		no_argument,		NULL,	'q' },
 	{"verbose",		no_argument,		NULL,	'v' },
@@ -553,6 +668,56 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 	return 0;
 }
 
+static void exfat_discard_dev(struct exfat_blk_dev *bd,
+		struct exfat_user_input *ui)
+{
+	uint64_t offset = 0;
+	uint64_t tmp_step;
+	int err;
+	/* Discard the device 2G at a time */
+	const uint64_t step = 2ULL << 30;
+	const uint64_t count = bd->num_sectors * bd->sector_size;
+
+	if (!ui->discard || !bd->isblk) {
+		exfat_debug("no-discard requested or the device is a file\n");
+		return;
+	}
+
+	/*
+	 * The block discarding happens in smaller batches so it can be
+	 * interrupted prematurely
+	 */
+	while (offset < count) {
+		tmp_step = count - offset;
+		if (step < tmp_step)
+			tmp_step = step;
+
+		err = exfat_discard_blocks(bd->dev_fd, offset, tmp_step);
+		/*
+		 * We intentionally ignore errors from the discard ioctl. It is
+		 * not necessary for the mkfs functionality but just an
+		 * optimization. However we should stop on error.
+		 */
+		if (err == 0) {
+			if (offset == 0) {
+				exfat_info("Discarding blocks: ");
+				exfat_debug("BLKDISCARD: ");
+			}
+			exfat_debug("%"PRIu64"-%"PRIu64" ", offset, offset + tmp_step);
+			fflush(stdout);
+		} else {
+			exfat_debug("BLKDISCARD: %s\n", strerror(err));
+			if (offset > 0)
+				exfat_info("\n");
+			return;
+		}
+
+		offset += tmp_step;
+	}
+	if (offset > 0)
+		exfat_info("done\n");
+}
+
 static int make_exfat(struct exfat_blk_dev *bd, struct exfat_user_input *ui)
 {
 	int ret;
@@ -580,13 +745,13 @@ static int make_exfat(struct exfat_blk_dev *bd, struct exfat_user_input *ui)
 		return ret;
 
 	exfat_info("Allocation bitmap creation: ");
-	ret = exfat_create_bitmap(bd);
+	ret = exfat_create_bitmap(bd, ui);
 	exfat_info("%s\n", ret ? "failed" : "done");
 	if (ret)
 		return ret;
 
 	exfat_info("Upcase table creation: ");
-	ret = exfat_create_upcase_table(bd);
+	ret = exfat_create_upcase_table(bd, ui);
 	exfat_info("%s\n", ret ? "failed" : "done");
 	if (ret)
 		return ret;
@@ -640,7 +805,7 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:fVqvh", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:fCKVqvh", opts, NULL)) != EOF)
 		switch (c) {
 		/*
 		 * Make 'n' option fallthrough to 'L' option for for backward
@@ -709,6 +874,12 @@ int main(int argc, char *argv[])
 		case 'f':
 			ui.quick = false;
 			break;
+		case 'C':
+			ui.verify = true;
+			break;
+		case 'K':
+			ui.discard = false;
+			break;
 		case 'V':
 			version_only = true;
 			break;
@@ -753,6 +924,12 @@ int main(int argc, char *argv[])
 	if (ret)
 		goto close;
 
+	exfat_discard_dev(&bd, &ui);
+	/*
+	 * Zeroing out still needs to be conducted as per JESD84-B51 6.6.9:
+	 * "content of an explicitly erased memory range shall be ‘0’ or ‘1’
+	 * depending on different memory technology,"
+	 */
 	ret = exfat_zero_out_disk(&bd, &ui);
 	if (ret)
 		goto close;
@@ -765,10 +942,12 @@ int main(int argc, char *argv[])
 	ret = fsync(bd.dev_fd);
 close:
 	close(bd.dev_fd);
+	if (ui.verify)
+		close(bd.verify_fd);
 out:
 	if (!ret)
 		exfat_info("\nexFAT format complete!\n");
 	else
 		exfat_err("\nexFAT format fail!\n");
-	return ret;
+	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
 }

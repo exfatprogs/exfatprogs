@@ -59,6 +59,7 @@ static struct option opts[] = {
 	{"help",	no_argument,	NULL,	'h' },
 	{"?",		no_argument,	NULL,	'?' },
 	{"ignore-bad-fs",	no_argument,	NULL,	'b' },
+	{"progress",	no_argument,	NULL,	'P' },
 	{NULL,		0,		NULL,	 0  }
 };
 
@@ -72,6 +73,7 @@ static void usage(char *name)
 	fprintf(stderr, "\t-a                   Repair automatically\n");
 	fprintf(stderr, "\t-b | --ignore-bad-fs Try to recover even if exfat is not found\n");
 	fprintf(stderr, "\t-s | --rescue        Assign orphaned clusters to files\n");
+	fprintf(stderr, "\t-P | --progress      Show progress bar\n");
 	fprintf(stderr, "\t-V | --version       Show version\n");
 	fprintf(stderr, "\t-v | --verbose       Print debug\n");
 	fprintf(stderr, "\t-h | --help          Show help\n");
@@ -167,6 +169,8 @@ static int check_clus_chain(struct exfat_de_iter *de_iter, int stream_idx,
 					     clus))
 				return -EINVAL;
 		}
+		if (exfat_fsck.options & FSCK_OPTS_PROGRESS_BAR)
+			progress_update(&exfat_fsck.progress_bar, 1);
 
 		/* This cluster is allocated or not */
 		if (exfat_get_inode_next_clus(exfat, node, clus, &next))
@@ -245,13 +249,11 @@ static int root_check_clus_chain(struct exfat *exfat,
 				 struct exfat_inode *node,
 				 clus_t *clus_count)
 {
-	clus_t clus, next, prev = EXFAT_EOF_CLUSTER;
+	clus_t clus = node->first_clus, next, prev = EXFAT_EOF_CLUSTER;
 
+	*clus_count = 0;
 	if (!exfat_heap_clus(exfat, node->first_clus))
 		goto out_trunc;
-
-	clus = node->first_clus;
-	*clus_count = 0;
 
 	do {
 		if (exfat_bitmap_get(exfat->alloc_bitmap, clus)) {
@@ -936,7 +938,7 @@ skip_dset:
 			break;
 		if (need_delete) {
 			exfat_de_iter_get_dirty(iter, i, &dentry);
-			dentry->type &= EXFAT_DELETE;
+			dentry->type = EXFAT_DELETE;
 		}
 	}
 	*skip_dentries = i;
@@ -1424,7 +1426,7 @@ static int read_children(struct exfat_fsck *fsck, struct exfat_inode *dir)
 				struct exfat_dentry *dentry;
 
 				exfat_de_iter_get_dirty(de_iter, 0, &dentry);
-				dentry->type &= EXFAT_DELETE;
+				dentry->type = EXFAT_DELETE;
 			}
 			break;
 		}
@@ -1756,6 +1758,18 @@ static void exfat_show_info(struct exfat_fsck *fsck, const char *dev_name)
 			exfat_stat.fixed_count);
 }
 
+static clus_t count_bitmap_set_bits(struct exfat *exfat)
+{
+	clus_t count = 0;
+	size_t i, bytes = exfat->disk_bitmap_size;
+
+	for (i = 0; i + sizeof(uint32_t) <= bytes; i += sizeof(uint32_t))
+		count += __builtin_popcount(*(uint32_t *)(exfat->disk_bitmap + i));
+	for (; i < bytes; i++)
+		count += __builtin_popcount(exfat->disk_bitmap[i]);
+	return count;
+}
+
 int main(int argc, char * const argv[])
 {
 	struct fsck_user_input ui;
@@ -1764,6 +1778,7 @@ int main(int argc, char * const argv[])
 	struct exfat_inode *root;
 	int c, ret, exit_code;
 	bool version_only = false;
+	clus_t used_clus_count;
 
 	memset(&ui, 0, sizeof(ui));
 	memset(&bd, 0, sizeof(bd));
@@ -1774,7 +1789,7 @@ int main(int argc, char * const argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "arynpbsVvh", opts, NULL)) != EOF) {
+	while ((c = getopt_long(argc, argv, "arynpbsPVvh", opts, NULL)) != EOF) {
 		switch (c) {
 		case 'n':
 			if (ui.options & FSCK_OPTS_REPAIR_ALL)
@@ -1803,6 +1818,9 @@ int main(int argc, char * const argv[])
 		case 's':
 			ui.options |= FSCK_OPTS_RESCUE_CLUS;
 			break;
+		case 'P':
+			ui.options |= FSCK_OPTS_PROGRESS_BAR;
+			break;
 		case 'V':
 			version_only = true;
 			break;
@@ -1818,7 +1836,8 @@ int main(int argc, char * const argv[])
 	}
 
 	show_version();
-	if (optind != argc - 1)
+	if (optind != argc - 1 ||
+	    (ui.options & FSCK_OPTS_REPAIR_ASK && ui.options & FSCK_OPTS_PROGRESS_BAR))
 		usage(argv[0]);
 
 	if (version_only)
@@ -1877,6 +1896,11 @@ int main(int argc, char * const argv[])
 	if (ret) {
 		exfat_err("failed to verify root directory.\n");
 		goto out;
+	}
+
+	if (exfat_fsck.options & FSCK_OPTS_PROGRESS_BAR) {
+		used_clus_count = count_bitmap_set_bits(exfat_fsck.exfat);
+		progress_init(&exfat_fsck.progress_bar, 0, used_clus_count, 0);
 	}
 
 	exfat_debug("verifying directory entries...\n");

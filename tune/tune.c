@@ -152,5 +152,5 @@ close_fd_out:
 	if (exfat)
 		exfat_free_exfat(exfat);
 out:
-	return ret;
+	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
 }

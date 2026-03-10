@@ -167,7 +167,7 @@ static int exfat_update_boot_checksum(struct exfat_blk_dev *bd, bool is_backup)
 		boot_calc_checksum(buf, bd->sector_size, is_boot_sec, &checksum);
 	}
 
-	ret = exfat_write_checksum_sector(bd, checksum, is_backup);
+	ret = exfat_write_checksum_sector(bd, NULL, checksum, is_backup);
 
 free_buf:
 	free(buf);

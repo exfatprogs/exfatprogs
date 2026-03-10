@@ -68,6 +68,7 @@ enum {
 
 struct exfat_blk_dev {
 	int dev_fd;
+	int verify_fd;
 	unsigned long long offset;
 	unsigned long long size;
 	unsigned int sector_size;
@@ -75,6 +76,7 @@ struct exfat_blk_dev {
 	unsigned long long num_sectors;
 	unsigned int num_clusters;
 	unsigned int cluster_size;
+	bool isblk;
 };
 
 struct exfat_user_input {
@@ -86,10 +88,13 @@ struct exfat_user_input {
 	unsigned int boundary_align;
 	bool pack_bitmap;
 	bool quick;
+	bool verify;
+	bool discard;
 	__u16 volume_label[VOLUME_LABEL_MAX_LEN];
 	int volume_label_len;
 	unsigned int volume_serial;
 	const char *guid;
+	unsigned char *fat_table_buff;
 };
 
 struct exfat;
@@ -155,6 +160,7 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 ssize_t exfat_read(int fd, void *buf, size_t size, off_t offset);
 ssize_t exfat_write(int fd, void *buf, size_t size, off_t offset);
 ssize_t exfat_write_zero(int fd, size_t size, off_t offset);
+int exfat_discard_blocks(int fd, uint64_t start, uint64_t len);
 
 size_t exfat_utf16_len(const __le16 *str, size_t max_size);
 ssize_t exfat_utf16_enc(const char *in_str, __u16 *out_str, size_t out_size);
@@ -171,7 +177,8 @@ int exfat_read_sector(struct exfat_blk_dev *bd, void *buf,
 int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
 		unsigned int sec_off);
 int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
-		unsigned int checksum, bool is_backup);
+	struct exfat_user_input *ui, unsigned int checksum,
+	bool is_backup);
 char *exfat_conv_volume_label(struct exfat_dentry *vol_entry);
 int exfat_show_volume_serial(int fd);
 int exfat_set_volume_serial(struct exfat_blk_dev *bd,
@@ -193,7 +200,9 @@ int exfat_root_clus_count(struct exfat *exfat);
 int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs);
 int exfat_parse_ulong(const char *s, unsigned long *out);
 int exfat_check_name(__le16 *utf16_name, int len);
-
+int exfat_check_written_data(struct exfat_blk_dev *bd, const void *buf,
+				     size_t len, off_t off,
+				     const char *what);
 /*
  * Exfat Print
  */
