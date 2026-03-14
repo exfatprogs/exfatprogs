@@ -28,7 +28,7 @@
 
 unsigned int print_level  = EXFAT_INFO;
 
-void exfat_bitmap_set_range(struct exfat *exfat, char *bitmap,
+void exfat_bitmap_set_range(struct exfat *exfat, unsigned char *bitmap,
 			    clus_t start_clus, clus_t count)
 {
 	clus_t clus;
@@ -44,7 +44,7 @@ void exfat_bitmap_set_range(struct exfat *exfat, char *bitmap,
 	}
 }
 
-static int exfat_bitmap_find_bit(struct exfat *exfat, char *bmap,
+static int exfat_bitmap_find_bit(struct exfat *exfat, unsigned char *bmap,
 				 clus_t start_clu, clus_t *next,
 				 int bit)
 {
@@ -62,14 +62,14 @@ static int exfat_bitmap_find_bit(struct exfat *exfat, char *bmap,
 	return 1;
 }
 
-int exfat_bitmap_find_zero(struct exfat *exfat, char *bmap,
+int exfat_bitmap_find_zero(struct exfat *exfat, unsigned char *bmap,
 			   clus_t start_clu, clus_t *next)
 {
 	return exfat_bitmap_find_bit(exfat, bmap,
 				     start_clu, next, 0);
 }
 
-int exfat_bitmap_find_one(struct exfat *exfat, char *bmap,
+int exfat_bitmap_find_one(struct exfat *exfat, unsigned char *bmap,
 			  clus_t start_clu, clus_t *next)
 {
 	return exfat_bitmap_find_bit(exfat, bmap,
