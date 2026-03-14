@@ -122,31 +122,31 @@ typedef __u32	bitmap_t;
 #define BITMAP_CLEAR(bmap, bit)	\
 	(((bitmap_t *)(bmap))[BIT_ENTRY(bit)] &= ~BIT_MASK(bit))
 
-static inline bool exfat_bitmap_get(char *bmap, clus_t c)
+static inline bool exfat_bitmap_get(unsigned char *bmap, clus_t c)
 {
 	clus_t cc = c - EXFAT_FIRST_CLUSTER;
 
 	return BITMAP_GET(bmap, cc);
 }
 
-static inline void exfat_bitmap_set(char *bmap, clus_t c)
+static inline void exfat_bitmap_set(unsigned char *bmap, clus_t c)
 {
 	clus_t cc = c - EXFAT_FIRST_CLUSTER;
 
 	BITMAP_SET(bmap, cc);
 }
 
-static inline void exfat_bitmap_clear(char *bmap, clus_t c)
+static inline void exfat_bitmap_clear(unsigned char *bmap, clus_t c)
 {
 	clus_t cc = c - EXFAT_FIRST_CLUSTER;
 	(((bitmap_t *)(bmap))[BIT_ENTRY(cc)] &= ~BIT_MASK(cc));
 }
 
-void exfat_bitmap_set_range(struct exfat *exfat, char *bitmap,
+void exfat_bitmap_set_range(struct exfat *exfat, unsigned char *bitmap,
 			    clus_t start_clus, clus_t count);
-int exfat_bitmap_find_zero(struct exfat *exfat, char *bmap,
+int exfat_bitmap_find_zero(struct exfat *exfat, unsigned char *bmap,
 			   clus_t start_clu, clus_t *next);
-int exfat_bitmap_find_one(struct exfat *exfat, char *bmap,
+int exfat_bitmap_find_one(struct exfat *exfat, unsigned char *bmap,
 			  clus_t start_clu, clus_t *next);
 
 void show_version(void);
