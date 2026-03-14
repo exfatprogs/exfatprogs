@@ -50,17 +50,29 @@ void progress_update(struct progress_bar *p, uint32_t update)
 #endif
 
 	p->current += update;
-	if (p->current != p->stop) {
-		if ((p->current - p->start) % p->resolution)
-			return;
+	if ((p->current - p->start) % p->resolution)
+		return;
+
+	if (p->current >= p->stop) {
+#ifdef PROG_CALC_FLOAT
+		printf("99.99 percent completed (processed: %u clusters)\r", p->current);
+#else
+		printf("99 percent completed (processed: %u clusters)\r", p->current);
+#endif
+	} else {
 #ifdef PROG_CALC_FLOAT
 		percent = p->unit * p->current;
-		printf("%6.2f percent completed\r", percent);
+		printf("%6.2f percent completed (processed: %u clusters)\r", percent, p->current);
 #else
 		percent = (p->current * 100) / p->total;
-		printf("%3u percent completed\r", percent);
+		printf("%3u percent completed (processed: %u clusters)\r", percent, p->current);
 #endif
-	} else
-		printf("100.00 percent completed\n");
+	}
+	fflush(stdout);
+}
+
+void progress_finish(struct progress_bar *p)
+{
+	printf("100.00 percent completed (processed: %u clusters)\r", p->current);
 	fflush(stdout);
 }

@@ -1929,6 +1929,8 @@ int main(int argc, char * const argv[])
 	}
 	if (exfat_fsck.options & FSCK_OPTS_REPAIR_WRITE)
 		exfat_mark_volume_dirty(exfat_fsck.exfat, false);
+	if (exfat_fsck.options & FSCK_OPTS_PROGRESS_BAR)
+		progress_finish(&exfat_fsck.progress_bar);
 
 out:
 	exfat_show_info(&exfat_fsck, ui.ei.dev_name);
