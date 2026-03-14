@@ -24,4 +24,5 @@ struct progress_bar {
 
 void progress_init(struct progress_bar *p, uint32_t start, uint32_t stop, uint32_t res);
 void progress_update(struct progress_bar *p, uint32_t current);
+void progress_finish(struct progress_bar *p);
 #endif
