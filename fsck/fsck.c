@@ -1246,7 +1246,7 @@ static int read_upcase_table(struct exfat_fsck *fsck)
 	}
 
 	checksum = 0;
-	boot_calc_checksum((unsigned char *)upcase, size, false, &checksum);
+	boot_calc_checksum((unsigned char *)upcase, (size_t)size, false, &checksum);
 	if (le32_to_cpu(dentry->upcase_checksum) != checksum) {
 		if (exfat_repair_ask(fsck, ER_DE_UPCASE,
 				"ERROR: corrupted upcase table %#x (expected: %#x)",
