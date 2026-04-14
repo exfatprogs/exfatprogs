@@ -84,10 +84,10 @@ wchar_t exfat_bad_char(wchar_t w)
 		|| (w == '\\');
 }
 
-void boot_calc_checksum(unsigned char *sector, unsigned short size,
+void boot_calc_checksum(const unsigned char *sector, size_t size,
 		bool is_boot_sec, __le32 *checksum)
 {
-	unsigned int index;
+	size_t index;
 
 	if (is_boot_sec) {
 		for (index = 0; index < size; index++) {

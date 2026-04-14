@@ -155,7 +155,7 @@ int exfat_bitmap_find_one(struct exfat *exfat, unsigned char *bmap,
 void show_version(void);
 
 wchar_t exfat_bad_char(wchar_t w);
-void boot_calc_checksum(unsigned char *sector, unsigned short size,
+void boot_calc_checksum(const unsigned char *sector, size_t size,
 		bool is_boot_sec, __le32 *checksum);
 void init_user_input(struct exfat_user_input *ui);
 int exfat_get_blk_dev_info(struct exfat_user_input *ui,
