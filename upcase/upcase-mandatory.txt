@@ -1,0 +1,33 @@
+# The "mandatory" upcase table as found in the spec:
+# https://learn.microsoft.com/en-us/windows/win32/fileio/exfat-specification#table-24-mandatory-first-128-up-case-table-entries
+#
+# The values must be presented in big-endian byte order here as the byte-order
+# will be inverted when converted to binary.
+#
+# USE AT YOUR OWN RISK:
+#
+# !! This table is only for demonstration and development purposes !!
+#
+# You may be able to save a few clusters that would be wasted for the full
+# table, but considering that it will confuse systems that have case-insensitive
+# file system support like MS Windows, it is really not worth using it.
+
+0000h 	0001h 	0002h 	0003h 	0004h 	0005h 	0006h 	0007h
+0008h 	0009h 	000Ah 	000Bh 	000Ch 	000Dh 	000Eh 	000Fh
+0010h 	0011h 	0012h 	0013h 	0014h 	0015h 	0016h 	0017h
+0018h 	0019h 	001Ah 	001Bh 	001Ch 	001Dh 	001Eh 	001Fh
+0020h 	0021h 	0022h 	0023h 	0024h 	0025h 	0026h 	0027h
+0028h 	0029h 	002Ah 	002Bh 	002Ch 	002Dh 	002Eh 	002Fh
+0030h 	0031h 	0032h 	0033h 	0034h 	0035h 	0036h 	0037h
+0038h 	0039h 	003Ah 	003Bh 	003Ch 	003Dh 	003Eh 	003Fh
+0040h 	0041h 	0042h 	0043h 	0044h 	0045h 	0046h 	0047h
+0048h 	0049h 	004Ah 	004Bh 	004Ch 	004Dh 	004Eh 	004Fh
+0050h 	0051h 	0052h 	0053h 	0054h 	0055h 	0056h 	0057h
+0058h 	0059h 	005Ah 	005Bh 	005Ch 	005Dh 	005Eh 	005Fh
+0060h 	0041h 	0042h 	0043h 	0044h 	0045h 	0046h 	0047h
+0048h 	0049h 	004Ah 	004Bh 	004Ch 	004Dh 	004Eh 	004Fh
+0050h 	0051h 	0052h 	0053h 	0054h 	0055h 	0056h 	0057h
+0058h 	0059h 	005Ah 	007Bh 	007Ch 	007Dh 	007Eh 	007Fh
+# The table in the spec is missing these terminators:
+# Skip the next FF7F entries and put an identity mapping as the last entry
+FFFFh 	FF7Fh 	FFFFh

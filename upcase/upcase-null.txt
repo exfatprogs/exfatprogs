@@ -1,0 +1,22 @@
+# This is the "all-identity" upcase table in compressed format.
+#
+# The values must be presented in big-endian byte order here as the byte-order
+# will be inverted when converted to binary.
+#
+# Most implementations won't accept an empty table of 0 bytes, so the table
+# needs to have at least one entry at the end, which is an identity mapping.
+# An exFAT volume formatted with the table will effectively behave as a
+# case-insensitive volume much like a UNIX file system.
+#
+# USE AT YOUR OWN RISK:
+#
+# !! This table is only for demonstration and development purposes !!
+#
+# You may be able to save a few clusters that would be wasted for the full
+# table, but considering that it will confuse systems that have case-insensitive
+# file system support like MS Windows, it is really not worth using it.
+
+# Adjust offset by 0xFFFF
+FFFFh FFFFh
+# An identity mapping as the last entry
+FFFFh
