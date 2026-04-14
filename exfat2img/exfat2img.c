@@ -21,8 +21,6 @@
 #include "exfat_fs.h"
 #include "exfat_dir.h"
 
-#define EXFAT_MAX_UPCASE_CHARS	0x10000
-
 struct exfat2img_hdr {
 	__le32	magic;
 	__le32	major_version;

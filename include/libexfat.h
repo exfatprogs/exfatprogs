@@ -56,6 +56,9 @@ typedef __u32 clus_t;
 
 #define EXFAT_MAX_HASH_COUNT		(UINT16_MAX + 1)
 
+#define EXFAT_MAX_UPCASE_CHARS		(0x10000)
+#define EXFAT_MAX_UPCASE_TABLE_SIZE	(EXFAT_MAX_UPCASE_CHARS * sizeof(__u16))
+
 enum {
 	BOOT_SEC_IDX = 0,
 	EXBOOT_SEC_IDX,

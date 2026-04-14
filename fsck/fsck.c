@@ -26,8 +26,6 @@ struct fsck_user_input {
 	enum fsck_ui_options		options;
 };
 
-#define EXFAT_MAX_UPCASE_CHARS	0x10000
-
 #define FSCK_EXIT_NO_ERRORS		0x00
 #define FSCK_EXIT_CORRECTED		0x01
 #define FSCK_EXIT_NEED_REBOOT		0x02
@@ -1165,7 +1163,7 @@ static int exfat_repair_upcase_table(struct exfat *exfat,
 	memset(dentry, 0, sizeof(*dentry));
 	dentry->type = EXFAT_UPCASE;
 	dentry->upcase_start_clu = cpu_to_le32(clu);
-	dentry->upcase_checksum = cpu_to_le32(0xe619d30d);
+	dentry->upcase_checksum = cpu_to_le32(EXFAT_UPCASE_TABLE_CHKSUM);
 	dentry->upcase_size = cpu_to_le64(sizeof(default_upcase_table));
 
 	/* Write upcase table dentry */
