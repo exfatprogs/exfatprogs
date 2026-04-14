@@ -2,7 +2,7 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = lib mkfs fsck tune label dump exfat2img
+SUBDIRS = lib mkfs fsck tune label dump exfat2img upcase
 
 # manpages
 dist_man8_MANS =		\
