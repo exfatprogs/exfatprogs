@@ -19,6 +19,7 @@ struct exfat_mkfs_info {
 	unsigned long long ut_byte_off;
 	unsigned int ut_start_clu;
 	unsigned int ut_byte_len;
+	unsigned int ut_chksum;
 	unsigned long long root_byte_off;
 	unsigned int root_byte_len;
 	unsigned int root_start_clu;

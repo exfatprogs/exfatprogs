@@ -18,10 +18,15 @@
 #include <errno.h>
 #include <locale.h>
 #include <time.h>
+#include <assert.h>
+#ifdef _POSIX_MAPPED_FILES
+#include <sys/mman.h>
+#endif
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
 #include "mkfs.h"
+#include "upcase_table.h"
 
 struct exfat_mkfs_info finfo;
 
@@ -484,10 +489,12 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 	ed[2].bitmap_size = cpu_to_le64(finfo.bitmap_byte_len);
 
 	/* Set upcase table entry */
-	ed[3].type = EXFAT_UPCASE;
-	ed[3].upcase_checksum = cpu_to_le32(0xe619d30d);
-	ed[3].upcase_start_clu = cpu_to_le32(finfo.ut_start_clu);
-	ed[3].upcase_size = cpu_to_le64(EXFAT_UPCASE_TABLE_SIZE);
+	if (finfo.ut_byte_len) {
+		ed[3].type = EXFAT_UPCASE;
+		ed[3].upcase_checksum = cpu_to_le32(finfo.ut_chksum);
+		ed[3].upcase_start_clu = cpu_to_le32(finfo.ut_start_clu);
+		ed[3].upcase_size = cpu_to_le64(finfo.ut_byte_len);
+	}
 
 	nbytes = pwrite(bd->dev_fd, ed, dentries_len, finfo.root_byte_off);
 	if (nbytes != dentries_len) {
@@ -519,6 +526,7 @@ static void usage(void)
 		"\t-c | --cluster-size=size(or suffixed by 'K' or 'M')    Specify cluster size\n"
 		"\t-b | --boundary-align=size(or suffixed by 'K' or 'M')  Specify boundary alignment\n"
 		"\t     --pack-bitmap                                     Move bitmap into FAT segment\n"
+		"\t     --upcase=file                                     Specify up-case table binary file\n"
 		"\t-f | --full-format                                     Full format\n"
 		"\t-C | --check-written                                   Verify written filesystem metadata by read-back\n"
 		"\t-K | --no-discard                                      Do not discard blocks\n"
@@ -532,6 +540,7 @@ static void usage(void)
 }
 
 #define PACK_BITMAP (CHAR_MAX + 1)
+#define UPCASE_FILE (CHAR_MAX + 2)
 
 static const struct option opts[] = {
 	{"volume-label",	required_argument,	NULL,	'L' },
@@ -539,6 +548,7 @@ static const struct option opts[] = {
 	{"sector-size",		required_argument,	NULL,	's' },
 	{"cluster-size",	required_argument,	NULL,	'c' },
 	{"boundary-align",	required_argument,	NULL,	'b' },
+	{"upcase",		required_argument,	NULL,	UPCASE_FILE },
 	{"pack-bitmap",		no_argument,		NULL,	PACK_BITMAP },
 	{"full-format",		no_argument,		NULL,	'f' },
 	{"check-written",	no_argument,		NULL,	'C' },
@@ -582,6 +592,146 @@ static int exfat_pack_bitmap(const struct exfat_user_input *ui)
 		}
 		bitmap_clu_len = new_bitmap_clu_len;
 	}
+}
+
+#ifdef _POSIX_MAPPED_FILES
+static void exfat_unmap_upcase_m(struct exfat_user_input *ui)
+{
+	munmap(ui->upcase.m, ui->upcase.len);
+}
+#endif
+
+static void exfat_free_upcase_m(struct exfat_user_input *ui)
+{
+	free(ui->upcase.m);
+}
+
+static int exfat_load_upcase(struct exfat_user_input *ui)
+{
+	int fd, ret = 0;
+	uint8_t *m = NULL;
+	void *nm;
+	off_t len;
+	size_t buflen = 0, size = 0;
+
+	if (!exfat_ui_has_upcase_file(ui)) {
+		/* set defaults and return */
+		ui->upcase.table = default_upcase_table;
+		ui->upcase.len = EXFAT_UPCASE_TABLE_SIZE;
+		return 0;
+	}
+
+	fd = open(ui->upcase.file, O_RDONLY);
+	if (fd < 0) {
+		ret = -errno;
+		goto out;
+	}
+
+	len = lseek(fd, 0, SEEK_END);
+	if (len == 0) {
+		/* An empty file given */
+		ui->upcase.table = NULL;
+		ui->upcase.len = 0;
+		goto out;
+	}
+	if (len > EXFAT_MAX_UPCASE_TABLE_SIZE) {
+		ret = -EFBIG;
+		goto out;
+	}
+
+#ifdef _POSIX_MAPPED_FILES
+	if (len > 0) {
+		/*
+		 * The file is seekable and the size of the file is known. Try mmap() to save some
+		 * memory (a full upcase table binary file can range up to 131KB)
+		 */
+		m = mmap(NULL, (size_t)len, PROT_READ, MAP_SHARED, fd, 0);
+		assert(m != NULL);
+		if (m == MAP_FAILED)
+			m = NULL;
+		else {
+			ui->upcase.table = ui->upcase.m = m;
+			ui->upcase.len = (size_t)len;
+			ui->upcase.free = exfat_unmap_upcase_m;
+			goto out;
+		}
+	}
+#endif
+	/* Good-old I/O loop fallback */
+
+	size = len > 0 ? (size_t)len : (EXFAT_MAX_UPCASE_TABLE_SIZE + 1);
+	m = malloc(size);
+	if (m == NULL)
+		goto nomem;
+
+	lseek(fd, 0, SEEK_SET);
+
+	while (true) {
+		const size_t rem = size - buflen;
+		ssize_t rsize;
+
+		rsize = read(fd, m + buflen, rem);
+		if (rsize == 0)
+			break;
+		if (rsize < 0) {
+			ret = -errno;
+			goto free;
+		}
+
+		buflen += rsize;
+		if (buflen > EXFAT_MAX_UPCASE_TABLE_SIZE) {
+			ret = -EFBIG;
+			goto free;
+		}
+		if (len > 0 && buflen >= (size_t)len)
+			break;
+	}
+
+	/* shrink to fit before returning, ignoring errors */
+	if (buflen == 0) {
+		free(m);
+		m = NULL;
+	} else if (buflen != size) {
+		nm = realloc(m, buflen);
+		if (nm != NULL)
+			m = nm;
+	}
+
+	ui->upcase.table = ui->upcase.m = m;
+	ui->upcase.len = buflen;
+	ui->upcase.free = exfat_free_upcase_m;
+	goto out;
+
+nomem:
+	ret = -ENOMEM;
+free:
+	free(m);
+out:
+	if (fd >= 0)
+		close(fd);
+	if (ret < 0)
+		exfat_err("%s: %s\n", ui->upcase.file, strerror(-ret));
+	if (ret == 0) {
+		if (ui->upcase.len == 0)
+			exfat_info("!!! an empty upcase table(0 bytes) is loaded !!!\n"
+				   "!!! Implementations will treat the volume as damaged !!!\n");
+		else
+			exfat_info("!!! --upcase option is used !!!\n"
+				   "!!! mkfs.exfat does not check the validity of the file !!!\n"
+				   "!!! Use at your own risk !!!\n");
+	}
+
+	return ret;
+}
+
+static void exfat_free_upcase(struct exfat_user_input *ui)
+{
+	if (ui->upcase.free)
+		ui->upcase.free(ui);
+	ui->upcase.table = NULL;
+	ui->upcase.m = NULL;
+	ui->upcase.free = NULL;
+	ui->upcase.len = 0;
 }
 
 static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
@@ -637,7 +787,11 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
 
 	finfo.ut_start_clu = EXFAT_FIRST_CLUSTER + clu_len / ui->cluster_size;
 	finfo.ut_byte_off = finfo.bitmap_byte_off + clu_len;
-	finfo.ut_byte_len = EXFAT_UPCASE_TABLE_SIZE;
+	finfo.ut_byte_len = ui->upcase.len;
+	boot_calc_checksum(ui->upcase.table, ui->upcase.len, false, &finfo.ut_chksum);
+	if (ui->upcase.table == default_upcase_table)
+		assert(finfo.ut_chksum == EXFAT_UPCASE_TABLE_CHKSUM &&
+			finfo.ut_byte_len == EXFAT_UPCASE_TABLE_SIZE);
 	clu_len = round_up(finfo.ut_byte_len,
 			(unsigned long long)ui->cluster_size);
 
@@ -868,6 +1022,9 @@ int main(int argc, char *argv[])
 			}
 			ui.boundary_align = ret;
 			break;
+		case UPCASE_FILE:
+			ui.upcase.file = optarg;
+			break;
 		case PACK_BITMAP:
 			ui.pack_bitmap = true;
 			break;
@@ -916,6 +1073,10 @@ int main(int argc, char *argv[])
 
 	ui.dev_name = argv[optind];
 
+	ret = exfat_load_upcase(&ui);
+	if (ret < 0)
+		goto out;
+
 	ret = exfat_get_blk_dev_info(&ui, &bd);
 	if (ret < 0)
 		goto out;
@@ -945,6 +1106,8 @@ close:
 	if (ui.verify)
 		close(bd.verify_fd);
 out:
+	exfat_free_upcase(&ui);
+
 	if (!ret)
 		exfat_info("\nexFAT format complete!\n");
 	else
