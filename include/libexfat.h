@@ -98,7 +98,21 @@ struct exfat_user_input {
 	unsigned int volume_serial;
 	const char *guid;
 	unsigned char *fat_table_buff;
+
+	struct {
+		const char *file;
+		const unsigned char *table;
+		void *m;
+		size_t len;
+		void (*free)(struct exfat_user_input *ui);
+	} upcase;
 };
+
+/* Returns true if the option used or the option argument is not an empty string */
+static inline bool exfat_ui_has_upcase_file(const struct exfat_user_input *ui)
+{
+	return ui->upcase.file != NULL && ui->upcase.file[0] != 0;
+}
 
 struct exfat;
 struct exfat_inode;
