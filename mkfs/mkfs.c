@@ -818,18 +818,21 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 	bool mapped = false;
 	const void *zm = NULL;
 	const size_t iosize = ui->cluster_size;
+	unsigned long long target_zerolen;
 
 	assert(iosize > 0);
 
 	if (ui->quick)
-		return 0;
+		target_zerolen = MIN(bd->size, EXFAT_HEAD_ZERO_OUT);
+	else
+		target_zerolen = bd->size;
 
-	ret = exfat_write_zero(bd->dev_fd, bd->size, 0);
+	ret = exfat_write_zero(bd->dev_fd, target_zerolen, 0);
 	if (ret)
 		goto out;
 
 	if (ui->verify) {
-		off_t ofs = 0, rem = bd->size;
+		off_t ofs = 0, rem = target_zerolen;
 
 		zm = exfat_map_zeromem(iosize, &mapped);
 		if (zm == NULL)
@@ -838,7 +841,7 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 		while (rem > 0) {
 			const off_t vs = MIN(iosize, rem);
 
-			ret = exfat_check_written_data(bd, zm, vs, ofs, "zero out");
+			ret = exfat_check_written_data(bd, zm, (size_t)vs, ofs, "zero out");
 			if (ret) {
 				exfat_err("disk zeroing out verification failed (read-back mismatch)\n");
 				goto out;
@@ -855,7 +858,7 @@ out:
 	if (ret)
 		exfat_err("write failed(errno : %d)\n", errno);
 	else
-		exfat_debug("zero out written size : %llu\n", bd->size);
+		exfat_debug("zero out written size : %llu\n", target_zerolen);
 
 	return ret;
 }
