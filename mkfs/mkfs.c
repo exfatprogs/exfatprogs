@@ -642,7 +642,7 @@ static int exfat_load_upcase(struct exfat_user_input *ui)
 		ui->upcase.len = 0;
 		goto out;
 	}
-	if (len > EXFAT_MAX_UPCASE_TABLE_SIZE) {
+	if (len > (off_t)EXFAT_MAX_UPCASE_TABLE_SIZE) {
 		ret = -EFBIG;
 		goto out;
 	}
@@ -842,7 +842,7 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 			goto out;
 
 		while (rem > 0) {
-			const off_t vs = MIN(iosize, rem);
+			const off_t vs = MIN((off_t)iosize, rem);
 
 			ret = exfat_check_written_data(bd, zm, (size_t)vs, ofs, "zero out");
 			if (ret) {
