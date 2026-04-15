@@ -827,6 +827,9 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 	else
 		target_zerolen = bd->size;
 
+	exfat_info("Zeroing out %llu bytes: ", target_zerolen);
+	fflush(stdout);
+
 	ret = exfat_write_zero(bd->dev_fd, target_zerolen, 0);
 	if (ret)
 		goto out;
@@ -857,8 +860,10 @@ out:
 
 	if (ret)
 		exfat_err("write failed(errno : %d)\n", errno);
-	else
+	else {
+		exfat_info("done\n");
 		exfat_debug("zero out written size : %llu\n", target_zerolen);
+	}
 
 	return ret;
 }
