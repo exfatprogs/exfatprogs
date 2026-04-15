@@ -177,6 +177,7 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 ssize_t exfat_read(int fd, void *buf, size_t size, off_t offset);
 ssize_t exfat_write(int fd, void *buf, size_t size, off_t offset);
 int exfat_write_zero(int fd, off_t size, off_t offset);
+int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs);
 int exfat_discard_blocks(int fd, uint64_t start, uint64_t len);
 
 size_t exfat_utf16_len(const __le16 *str, size_t max_size);

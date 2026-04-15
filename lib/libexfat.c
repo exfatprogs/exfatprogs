@@ -242,20 +242,25 @@ ssize_t exfat_write(int fd, void *buf, size_t size, off_t offset)
 
 int exfat_write_zero(int fd, off_t size, off_t offset)
 {
-	static const size_t zbs = 4 * KB;
+	return exfat_write_zero2(fd, size, offset, 0);
+}
+
+int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs)
+{
 	bool mapped = false;
 	const void *zm;
 	int ret = 0;
 
-	zm = exfat_map_zeromem(zbs, &mapped);
+	if (bs == 0)
+		bs = 4 * KB;
+
+	zm = exfat_map_zeromem(bs, &mapped);
 	if (zm == NULL)
 		return -errno;
 
-	lseek(fd, offset, SEEK_SET);
-
 	while (size > 0) {
-		const size_t iter_size = (size_t)(MIN(size, zbs));
-		const ssize_t wsize = write(fd, zm, iter_size);
+		const size_t iter_size = (size_t)(MIN(size, bs));
+		const ssize_t wsize = pwrite(fd, zm, iter_size, offset);
 
 		if (wsize <= 0) {
 			ret = -EIO;
@@ -263,10 +268,11 @@ int exfat_write_zero(int fd, off_t size, off_t offset)
 		}
 
 		size -= wsize;
+		offset += wsize;
 	}
 
 out:
-	exfat_unmap_zeromem(zm, zbs, &mapped);
+	exfat_unmap_zeromem(zm, bs, &mapped);
 	return ret;
 }
 
