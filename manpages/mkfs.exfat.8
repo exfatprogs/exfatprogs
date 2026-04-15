@@ -117,6 +117,7 @@ Verify filesystem metadata by reading it back after writing.
 This option performs read-back verification of critical exFAT metadata
 (boot record, FAT, allocation bitmap, upcase table, and root directory)
 after each formatting stage.
+When used with \fB\-f\fR option, also written zeros are also verified.
 It is useful for detecting broken storage devices or devices that falsely
 report successful writes without actually persisting data.
 This option may slightly degrade formatting performance and is therefore

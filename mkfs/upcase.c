@@ -17,7 +17,7 @@ int exfat_create_upcase_table(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
 	off_t zero_ofs;
-	size_t zero_len;
+	off_t zero_len;
 	ssize_t nbytes;
 	int ret;
 
@@ -32,22 +32,30 @@ int exfat_create_upcase_table(struct exfat_blk_dev *bd,
 	nbytes = pwrite(bd->dev_fd, ui->upcase.table, ui->upcase.len, finfo.ut_byte_off);
 	if (nbytes != ui->upcase.len)
 		return -1;
-
-	zero_ofs = finfo.ut_byte_off + ui->upcase.len;
-	zero_len = finfo.root_byte_off - finfo.ut_byte_off - ui->upcase.len;
-	exfat_write_zero(bd->dev_fd, zero_len, zero_ofs);
-
 	if (ui->verify) {
 		ret = exfat_check_written_data(bd,
 					       ui->upcase.table,
 					       ui->upcase.len,
 					       finfo.ut_byte_off,
 					       "upcase table");
-		if (ret) {
-			exfat_err("upcase table verification failed (read-back mismatch)\n");
-			return ret;
-		}
+		if (ret)
+			goto verify_failed;
+	}
+
+	zero_ofs = finfo.ut_byte_off + ui->upcase.len;
+	zero_len = finfo.root_byte_off - finfo.ut_byte_off - ui->upcase.len;
+	ret = exfat_write_zero(bd->dev_fd, zero_len, zero_ofs);
+	if (ret)
+		return ret;
+	if (ui->verify) {
+		ret = exfat_check_written_data(bd, NULL, zero_len, zero_ofs, "upcase table");
+		if (ret)
+			goto verify_failed;
 	}
 
 	return 0;
+
+verify_failed:
+	exfat_err("upcase table verification failed (read-back mismatch)\n");
+	return ret;
 }

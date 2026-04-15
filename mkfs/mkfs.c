@@ -463,6 +463,14 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 				errno);
                 return ret;
         }
+	if (ui->verify) {
+		ret = exfat_check_written_data(bd, NULL, ui->cluster_size,
+				finfo.root_byte_off, "zero out root dir");
+		if (ret) {
+			exfat_err("root dir zeroing out verification failed (read-back mismatch)\n");
+			return ret;
+		}
+	}
 
 	/* Set volume label entry */
 	ed[0].type = EXFAT_VOLUME;
@@ -806,20 +814,50 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd,
 static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
-	int ret;
+	int ret = 0;
+	bool mapped = false;
+	const void *zm = NULL;
+	const size_t iosize = ui->cluster_size;
+
+	assert(iosize > 0);
 
 	if (ui->quick)
 		return 0;
 
 	ret = exfat_write_zero(bd->dev_fd, bd->size, 0);
-	if (ret) {
-		exfat_err("write failed(errno : %d)\n", errno);
-		return ret;
+	if (ret)
+		goto out;
+
+	if (ui->verify) {
+		off_t ofs = 0, rem = bd->size;
+
+		zm = exfat_map_zeromem(iosize, &mapped);
+		if (zm == NULL)
+			goto out;
+
+		while (rem > 0) {
+			const off_t vs = MIN(iosize, rem);
+
+			ret = exfat_check_written_data(bd, zm, vs, ofs, "zero out");
+			if (ret) {
+				exfat_err("disk zeroing out verification failed (read-back mismatch)\n");
+				goto out;
+			}
+
+			ofs += vs;
+			rem -= vs;
+		}
 	}
 
-	exfat_debug("zero out written size : %llu\n",
-		bd->size);
-	return 0;
+out:
+	exfat_unmap_zeromem(zm, iosize, &mapped);
+
+	if (ret)
+		exfat_err("write failed(errno : %d)\n", errno);
+	else
+		exfat_debug("zero out written size : %llu\n", bd->size);
+
+	return ret;
 }
 
 static void exfat_discard_dev(struct exfat_blk_dev *bd,
@@ -1073,6 +1111,8 @@ int main(int argc, char *argv[])
 
 	ui.dev_name = argv[optind];
 
+	exfat_open_fd_devzero();
+
 	ret = exfat_load_upcase(&ui);
 	if (ret < 0)
 		goto out;
@@ -1107,6 +1147,7 @@ close:
 		close(bd.verify_fd);
 out:
 	exfat_free_upcase(&ui);
+	exfat_close_fd_devzero();
 
 	if (!ret)
 		exfat_info("\nexFAT format complete!\n");

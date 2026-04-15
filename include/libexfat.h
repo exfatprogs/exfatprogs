@@ -217,9 +217,39 @@ int exfat_root_clus_count(struct exfat *exfat);
 int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs);
 int exfat_parse_ulong(const char *s, unsigned long *out);
 int exfat_check_name(__le16 *utf16_name, int len);
+/*
+ * Read back from the target device to confirm the successful write.
+ *
+ * If buf is NULL, checks that data read back from the device is all-zero(i.e.
+ * confirms successful zeroing).
+ */
 int exfat_check_written_data(struct exfat_blk_dev *bd, const void *buf,
 				     size_t len, off_t off,
 				     const char *what);
+/* Opens "/dev/zero" for exfat_map_zeromem(). */
+int exfat_open_fd_devzero(void);
+/* Closes "/dev/zero" opened for exfat_map_zeromem(). */
+void exfat_close_fd_devzero(void);
+/*
+ * Map read-only pages for testing memory range is all-zero in conjunction with
+ * memcmp().
+ *
+ * If mapped is unset, fallback to calloc() if mmap() is not available on the
+ * host platform or exfat_open_fd_devzero() hasn't been called. If mmap() has
+ * been successful, mapped is set. NULL is returned if neither mmap() nor
+ * calloc() has been possible and errno is set.
+ *
+ * If mapped is set, try mmap() and do not fallback to calloc. On error, NULL is
+ * returned and errno is set to ENOSYS if the platform does not support mmap(),
+ * EBADFD if exfat_open_fd_devzero() has been called successfully, or any other
+ * errno set in mmap().
+ *
+ * Note that /dev/zero mapping do not count towards committed memory. See
+ * vm.overcommit for detail.
+ */
+const void *exfat_map_zeromem(const size_t len, bool *mapped);
+int exfat_unmap_zeromem(const void *m, const size_t len, const bool *mapped);
+
 /*
  * Exfat Print
  */
