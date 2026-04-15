@@ -12,6 +12,9 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 #include <fcntl.h>
+#ifdef _POSIX_MAPPED_FILES
+#include <sys/mman.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -27,6 +30,7 @@
 #include "exfat_dir.h"
 
 unsigned int print_level  = EXFAT_INFO;
+static int fd_devzero = -1;
 
 void exfat_bitmap_set_range(struct exfat *exfat, unsigned char *bitmap,
 			    clus_t start_clus, clus_t count)
@@ -711,43 +715,160 @@ out:
 	return err;
 }
 
+static inline void exfat_report_verify_mismatch(const uint8_t *w, const uint8_t *r,
+		const off_t off, const size_t len, const char *what)
+{
+	for (size_t i = 0; i < len; i++) {
+		if (w[i] == r[i])
+			continue;
+
+		exfat_debug("%s verify mismatch (off=%llu, written=%02X, readback=%02X)\n",
+			what, (unsigned long long)off + i, w[i], r[i]);
+	}
+}
+
 int exfat_check_written_data(struct exfat_blk_dev *bd,
 				const void *buf, size_t len,
 				off_t off, const char *what)
 {
-	void *verify;
+	const size_t sector = bd->sector_size;
+	void *verify = NULL;
+	const void *zm = NULL;
+	bool zmapped = false;
 	ssize_t n;
-	size_t sector = bd->sector_size;
 	int ret = 0;
+
+	/*
+	 * See read(2) for max return value of read(). Well, if we wanna
+	 * support more than this, exfat_read() should be done in a
+	 * loop.
+	 */
+	assert(len <= 0x7FFFF000);
+	assert(sector > 0);
+
+	if (len == 0)
+		return 0;
 
 	ret = fsync(bd->dev_fd);
 	if (ret)
 		return ret;
 
-	off_t aligned_off = off & ~(sector - 1);
-	size_t head = off - aligned_off;
-	size_t aligned_len = ((head + len + sector - 1) / sector) * sector;
+	const off_t aligned_off = off & ~((off_t)sector - 1); /* this is evil */
+	const off_t head = off - aligned_off;
+	const off_t aligned_len = ((head + len + sector - 1) / sector) * sector;
 
-	if (posix_memalign(&verify, sector, aligned_len))
-		return -ENOMEM;
-	memset(verify, 0, aligned_len);
+	assert(head >= 0 && head < (off_t)sector);
+	assert(aligned_len > 0 && aligned_len <= 0x7FFFF000 && aligned_len >= (off_t)len);
 
-	n = exfat_read(bd->verify_fd, verify, aligned_len, aligned_off);
+	if (posix_memalign(&verify, sector, (size_t)aligned_len))
+		return -errno;
+	memset(verify, 0, (size_t)aligned_len);
+
+	if (buf == NULL) {
+		zm = exfat_map_zeromem(len, &zmapped);
+		if (zm == NULL) {
+			ret = -errno;
+			goto out;
+		}
+
+		buf = zm;
+	}
+
+	n = exfat_read(bd->verify_fd, verify, (size_t)aligned_len, aligned_off);
 	if (n != (ssize_t)aligned_len) {
 		exfat_debug("%s verify read failed (off=%llu, len=%zu)\n",
 					what, (unsigned long long)aligned_off,
-					aligned_len);
+					(size_t)aligned_len);
 		ret = -EIO;
+		goto out;
 	}
 
-	if (memcmp(buf, (unsigned char *)verify + head, len) != 0) {
-		exfat_debug("%s verify mismatch (off=%llu)\n",
-					what, (unsigned long long)off);
+	if (memcmp(buf, (const uint8_t *)verify + (size_t)head, len) != 0) {
+		exfat_report_verify_mismatch(buf,
+				(const uint8_t *)verify + (size_t)head, off, len, what);
 		ret = -EIO;
+		goto out;
 	}
 
+out:
 	free(verify);
+	exfat_unmap_zeromem(zm, len, &zmapped);
 	return ret;
+}
+
+int exfat_open_fd_devzero(void)
+{
+#ifdef _POSIX_MAPPED_FILES
+	if (fd_devzero < 0) {
+		fd_devzero = open("/dev/zero", O_RDONLY);
+		if (fd_devzero < 0)
+			return -errno;
+	}
+#else
+	return -ENOSYS;
+#endif
+	return 0;
+}
+
+void exfat_close_fd_devzero(void)
+{
+	if (fd_devzero < 0)
+		return;
+	close(fd_devzero);
+	fd_devzero = -1;
+}
+
+const void *exfat_map_zeromem(const size_t len, bool *mapped)
+{
+	void *ret;
+
+	if (len == 0)
+		return NULL;
+
+#ifdef _POSIX_MAPPED_FILES
+	if (fd_devzero >= 0) {
+		ret = mmap(NULL, len, PROT_READ, MAP_SHARED, fd_devzero, 0);
+
+		assert(ret != NULL);
+		if (ret != MAP_FAILED) {
+			*mapped = true;
+			return ret;
+		}
+	} else if (*mapped) {
+		errno = EBADFD;
+		return NULL;
+	}
+#else
+	if (*mapped) {
+		errno = ENOSYS;
+		return NULL;
+	}
+#endif
+	ret = calloc(len, 1);
+	if (ret != NULL)
+		*mapped = false;
+
+	return ret;
+}
+
+int exfat_unmap_zeromem(const void *m, const size_t len, const bool *mapped)
+{
+	if (m == NULL)
+		return 0;
+
+#ifdef _POSIX_MAPPED_FILES
+	if (*mapped) {
+		if (len > 0)
+			return munmap((void *)m, len);
+		return 0;
+	}
+#else
+	(void)mapped;
+#endif
+	free((void *)m);
+	(void)len;
+
+	return 0;
 }
 
 int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned int sec_off)
