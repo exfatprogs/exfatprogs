@@ -7,6 +7,7 @@
 
 #define MIN_NUM_SECTOR			(2048)
 #define EXFAT_MAX_CLUSTER_SIZE		(32*1024*1024)
+#define EXFAT_HEAD_ZERO_OUT		(0x10000)
 
 struct exfat_mkfs_info {
 	unsigned int total_clu_cnt;
