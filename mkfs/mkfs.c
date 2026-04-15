@@ -456,8 +456,8 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 	int dentries_len = sizeof(ed);
 	int nbytes, ret;
 
-	ret = exfat_write_zero(bd->dev_fd, ui->cluster_size,
-			finfo.root_byte_off);
+	ret = exfat_write_zero2(bd->dev_fd, ui->cluster_size,
+			finfo.root_byte_off, ui->cluster_size);
         if (ret) {
                 exfat_err("zero out write failed for root dir (errno : %d)\n",
 				errno);
@@ -830,7 +830,7 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 	exfat_info("Zeroing out %llu bytes: ", target_zerolen);
 	fflush(stdout);
 
-	ret = exfat_write_zero(bd->dev_fd, target_zerolen, 0);
+	ret = exfat_write_zero2(bd->dev_fd, target_zerolen, 0, iosize);
 	if (ret)
 		goto out;
 
