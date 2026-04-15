@@ -269,8 +269,11 @@ int exfat_de_iter_get(struct exfat_de_iter *iter,
 			ith * sizeof(struct exfat_dentry);
 	block = (unsigned int)(next_de_file_offset / iter->read_size);
 
-	if (next_de_file_offset + sizeof(struct exfat_dentry) >
-		iter->parent->size)
+	if (next_de_file_offset < 0 ||
+			next_de_file_offset + (off_t)sizeof(struct exfat_dentry) < 0)
+		return -EOVERFLOW;
+
+	if ((uint64_t)next_de_file_offset + sizeof(struct exfat_dentry) > iter->parent->size)
 		return EOF;
 
 	/* read next cluster if needed */
@@ -382,7 +385,7 @@ int exfat_de_iter_revert(struct exfat_de_iter *iter, int num)
 	dest_bd->offset = offset;
 
 	if (exfat_read(exfat->blk_dev->dev_fd, dest_bd->buffer, iter->read_size,
-			exfat_c2o(exfat, clu) + offset) != iter->read_size)
+			exfat_c2o(exfat, clu) + offset) != (ssize_t)iter->read_size)
 		return -EIO;
 
 out:

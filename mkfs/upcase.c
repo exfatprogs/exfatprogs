@@ -30,7 +30,7 @@ int exfat_create_upcase_table(struct exfat_blk_dev *bd,
 	 * TODO do this in a loop.
 	 */
 	nbytes = pwrite(bd->dev_fd, ui->upcase.table, ui->upcase.len, finfo.ut_byte_off);
-	if (nbytes != ui->upcase.len)
+	if (nbytes != (ssize_t)ui->upcase.len)
 		return -1;
 	if (ui->verify) {
 		ret = exfat_check_written_data(bd,

@@ -254,12 +254,14 @@ int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs)
 	if (bs == 0)
 		bs = 4 * KB;
 
+	assert((off_t)bs > 0);
+
 	zm = exfat_map_zeromem(bs, &mapped);
 	if (zm == NULL)
 		return -errno;
 
 	while (size > 0) {
-		const size_t iter_size = (size_t)(MIN(size, bs));
+		const size_t iter_size = MIN(size, (off_t)bs);
 		const ssize_t wsize = pwrite(fd, zm, iter_size, offset);
 
 		if (wsize <= 0) {

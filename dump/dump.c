@@ -424,8 +424,8 @@ static int exfat_get_next_dentry_offset(struct exfat *exfat, bool is_contiguous,
 	if (offset + DENTRY_SIZE == exfat->clus_size) {
 		ret = exfat_get_next_clus(exfat, clu, &clu);
 		if (ret) {
-			exfat_err("failed to get next dentry offset 0x%lx\n",
-					*dentry_off);
+			exfat_err("failed to get next dentry offset 0x%llx\n",
+					(unsigned long long)*dentry_off);
 			return ret;
 		}
 
@@ -548,10 +548,10 @@ static void exfat_show_stream_dentry(struct exfat_dentry *ed,
 		exfat_show_cluster_chain(exfat, ed);
 }
 
-static void exfat_show_bytes(const char *name, unsigned char *bytes, int n)
+static void exfat_show_bytes(const char *name, unsigned char *bytes, size_t n)
 {
 	char buf[64];
-	int i, len = 0;
+	size_t i, len = 0;
 
 	for (i = 0; i < n && len < sizeof(buf); i++)
 		len += snprintf(buf + len, sizeof(buf) - len, "%02X", bytes[i]);
@@ -559,8 +559,8 @@ static void exfat_show_bytes(const char *name, unsigned char *bytes, int n)
 	exfat_info("%-33s  %s\n", name, buf);
 }
 
-#define dump_bytes_field(name, feild)	\
-	exfat_show_bytes("   " name ":", (unsigned char *)feild, sizeof(feild))
+#define dump_bytes_field(name, field)	\
+	exfat_show_bytes("   " name ":", (unsigned char *)(field), sizeof((field)))
 
 static void exfat_show_name_dentry(struct exfat_dentry *ed,
 		struct exfat *exfat, uint32_t flags)
@@ -648,10 +648,9 @@ static struct show_dentry show_dentry_array[] = {
 static void exfat_show_dentry(struct exfat *exfat, struct exfat_dentry *ed,
 		unsigned int index, off_t dentry_off, uint32_t flags)
 {
-	int i;
 	struct show_dentry *sd = NULL;
 
-	for (i = 0; i < sizeof(show_dentry_array) / sizeof(*sd); i++) {
+	for (size_t i = 0; i < sizeof(show_dentry_array) / sizeof(*sd); i++) {
 		if (show_dentry_array[i].type == ed->type) {
 			sd = show_dentry_array + i;
 			break;
