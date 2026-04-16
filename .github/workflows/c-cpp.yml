@@ -11,17 +11,30 @@ on:
     - exfat-next
 
 jobs:
-  build:
-
+  tests:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        include:
+          - host: mips-linux-gnu
+            qemu: qemu-system-mips
+            gcc:  gcc-mips-linux-gnu
+            run:  qemu-mips
+          - host: x86_64-linux-gnu
+            qemu: qemu-system-x86
+            gcc:  gcc-x86-64-linux-gnu
+            run:  qemu-x86_64
+          - host: i686-linux-gnu
+            qemu: qemu-system-x86
+            gcc:  gcc-i686-linux-gnu
+            run:  qemu-i386
     steps:
     - uses: actions/checkout@v4
-    - name: before test
+    - name: Install packages
       run: |
         sudo apt-get --update --quiet --yes install \
              linux-headers-$(uname -r) xz-utils \
-             gcc-mips-linux-gnu qemu-system-mips \
+             ${{ matrix.gcc }} ${{ matrix.qemu }} \
              qemu-user
         sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
@@ -33,16 +46,16 @@ jobs:
         make -j$((`nproc`+1)) > /dev/null
         sudo make install > /dev/null
         make distclean > /dev/null
-        ./configure --host=mips-linux-gnu CFLAGS=--static > /dev/null
+        ./configure --host=${{ matrix.host }} CFLAGS=--static > /dev/null
         make -j$((`nproc`+1)) > /dev/null
     - name: run fsck repair testcases
       run: |
         cd tests
-        export FSCK1="qemu-mips ../fsck/fsck.exfat"
+        export FSCK1="${{ matrix.run }} ../fsck/fsck.exfat"
         export FSCK2="fsck.exfat"
         sudo -E ./test_fsck.sh
         export FSCK1="fsck.exfat"
-        export FSCK2="qemu-mips ../fsck/fsck.exfat"
+        export FSCK2="${{ matrix.run }} ../fsck/fsck.exfat"
         sudo -E ./test_fsck.sh
     - name: create file/director test
       run: |
