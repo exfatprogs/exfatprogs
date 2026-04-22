@@ -10,72 +10,213 @@ on:
     - master
     - exfat-next
 
+env:
+# FIXME
+#
+# As of writing of this, qemu-img does not support VHDX images whose block size
+# is other than 512. There's no other versatile util that can be used to create
+# 4096-BS VHDX
+  TEST_BLOCKSIZES: 512
+  # As of writing, the largest HDD on the market was 36TB
+  TEST_VOLUMESIZES: 7M 256M 32G 512G 1T 2T 4T 8T 16T 32T 64T
+  TEST_MAGIC: dd01aeee-bab0-babe-babe-deadcafebeef
+
 jobs:
   tests:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         include:
           - host: mips-linux-gnu
             qemu: qemu-system-mips
             gcc:  gcc-mips-linux-gnu
             run:  qemu-mips
+            name: mips
           - host: x86_64-linux-gnu
             qemu: qemu-system-x86
             gcc:  gcc-x86-64-linux-gnu
             run:  qemu-x86_64
+            name: x86_64
           - host: i686-linux-gnu
             qemu: qemu-system-x86
             gcc:  gcc-i686-linux-gnu
             run:  qemu-i386
+            name: i686
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Install packages
       run: |
         sudo apt-get --update --quiet --yes install \
              linux-headers-$(uname -r) xz-utils \
              ${{ matrix.gcc }} ${{ matrix.qemu }} \
-             qemu-user
+             qemu-user qemu-utils
         sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
     - name: build test & install exfatprogs
       run: |
-        ./autogen.sh > /dev/null
-        ./configure > /dev/null
-        make -j$((`nproc`+1)) > /dev/null
-        sudo make install > /dev/null
-        make distclean > /dev/null
-        ./configure --host=${{ matrix.host }} CFLAGS=--static > /dev/null
-        make -j$((`nproc`+1)) > /dev/null
+        ./autogen.sh
+        ./configure
+        make -j$((`nproc`+1))
+        sudo make install
+        make distclean
+        ./configure --host=${{ matrix.host }} CFLAGS=--static
+        make -j$((`nproc`+1))
     - name: run fsck repair testcases
       run: |
-        cd tests
+        pushd tests
         export FSCK1="${{ matrix.run }} ../fsck/fsck.exfat"
         export FSCK2="fsck.exfat"
         sudo -E ./test_fsck.sh
         export FSCK1="fsck.exfat"
         export FSCK2="${{ matrix.run }} ../fsck/fsck.exfat"
         sudo -E ./test_fsck.sh
-    - name: create file/director test
+        popd
+    - name: dentry creation/deletion stress test
+      shell: bash
       run: |
+        set -e
         sudo modprobe exfat
         sudo mkdir -p /mnt/test
         truncate -s 10G test.img
         sudo losetup /dev/loop22 test.img
-        sudo mkfs.exfat /dev/loop22
+        sudo ${{ matrix.run }} ./mkfs/mkfs.exfat /dev/loop22
         sudo mount -t exfat /dev/loop22 /mnt/test/
-        cd /mnt/test/
-        i=1;while [ $i -le 10000 ];do sudo touch file$i;if [ $? != 0 ]; then exit 1; fi; i=$(($i + 1));done
-        sync
-        sudo rm -rf *
-        i=1;while [ $i -le 10000 ];do sudo mkdir dir$i;if [ $? != 0 ]; then exit 1; fi; i=$(($i + 1));done
-        sync
-        sudo rm -rf *
-        i=1;while [ $i -le 10000 ];do sudo touch file$i;if [ $? != 0 ]; then exit 1; fi; i=$(($i + 1));done
-        i=1;while [ $i -le 10000 ];do sudo mkdir dir$i;if [ $? != 0 ]; then exit 1; fi; i=$(($i + 1));done
-        sync
-        sudo fsck.exfat /dev/loop22
-        sudo find . -delete
-        sudo fsck.exfat /dev/loop22
-        cd -
+        pushd /mnt/test/
+        cat << EOF | sudo bash
+          set -e
+
+          for (( i = 0; i < 10000; i++ ))
+          do
+            touch file\$i
+          done
+          sync
+          find -mindepth 1 -delete
+          for (( i = 0; i < 10000; i++ ))
+          do
+            mkdir dir\$i
+          done
+          sync
+          find -mindepth 1 -delete
+
+          for (( i = 0; i < 10000; i++ ))
+          do
+            touch file\$i
+          done
+          for (( i = 0; i < 10000; i++ ))
+          do
+            mkdir dir\$i
+          done
+          sync
+        EOF
+        popd
+        sudo ${{ matrix.run }} ./fsck/fsck.exfat /dev/loop22
+        sudo find /mnt/test/ -mindepth 1 -delete
+        sudo umount /mnt/test/
+        sudo ${{ matrix.run }} ./fsck/fsck.exfat /dev/loop22
+        sudo losetup -d /dev/loop22
+
+    - name: generate large sparse images for Windows runners
+      shell: bash
+      id: images
+      run: |
+        set -e
+
+        EXFAT_MKFS="$(realpath ./mkfs/mkfs.exfat)"
+        EXFAT_DUMP="$(realpath ./dump/dump.exfat)"
+
+        # cd to tmp dir as the rootfs the runner is running in might not support LFS
+        pushd "$(mktemp -d -p /dev/shm)"
+        CWD_FSTYPE="$(stat -fc '%T' .)"
+
+        # assert that cwd is indeed tmpfs
+        if [ "$CWD_FSTYPE" != "tmpfs" ]
+        then
+          echo "FSTYPE of temp dir: ${CWD_FSTYPE}!" >&2
+          exit 1
+        fi
+
+        mkdir "images-${{ matrix.name }}"
+        for bs in $TEST_BLOCKSIZES
+        do
+          mkdir "images-${{ matrix.name }}/$bs"
+
+          for vs in $TEST_VOLUMESIZES
+          do
+            img_a="images-${{ matrix.name }}/$bs/exfat-$vs.img"
+            img_b="images-${{ matrix.name }}/$bs/exfat-$vs.vhdx"
+
+            # fill the first 2MB with random data to see if mkfs.exfat leaves
+            # any garbage that confuses EXFAT.sys driver
+            dd iflag=fullblock if=/dev/urandom bs=2M count=1 of="$img_a" conv=notrunc status=none
+
+            # truncate up to the volume size
+            truncate -s "$vs" "$img_a"
+
+            sudo losetup -Pb "$bs" /dev/loop22 "$img_a"
+            sudo parted -s /dev/loop22 mkt gpt mkp fs fat32 1M 100%
+            sudo ${{ matrix.run }} "$EXFAT_MKFS" /dev/loop22p1
+
+            sudo mount -t exfat /dev/loop22p1 /mnt/test/
+            sudo mkdir /mnt/test/a
+            echo "$TEST_MAGIC" | sudo tee /mnt/test/a/b > /dev/null
+            sudo umount /mnt/test/
+
+            sudo ${{ matrix.run }} "$EXFAT_DUMP" /dev/loop22p1 | grep -iE 'Bytes per Sector:(\s+)?'"$bs" > /dev/null
+            sudo losetup -d /dev/loop22
+
+            qemu-img convert -f raw -O vhdx "$img_a" "$img_b"
+            rm -f "$img_a"
+          done
+        done
+
+        tar -S -cf "images-${{ matrix.name }}.tar" "images-${{ matrix.name }}"
+        TAR_FILE="$(realpath "images-${{ matrix.name }}.tar")"
+        popd
+
+        mv "$TAR_FILE" .
+    - name: Stage image bundle as artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: images-${{ matrix.name }}.tar
+        path: images-${{ matrix.name }}.tar
+
+  test-windows-interop:
+    name: test generated large sparse images on Windows runners
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-latest]
+        name: [mips, i686, x86_64]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: images-${{ matrix.name }}.tar
+    - shell: bash
+      run: |
+        set -e
+
+        tar -S -C /c -xf images-${{ matrix.name }}.tar
+
+        for bs in $TEST_BLOCKSIZES
+        do
+          for vs in $TEST_VOLUMESIZES
+          do
+            img="images-${{ matrix.name }}\\$bs\\exfat-$vs.vhdx"
+
+            # mount the image and get the disk number assigned by the kernel
+            disknum=$(powershell "Mount-DiskImage \"C:\\$img\" | Select-Object -ExpandProperty Number")
+            # assign it drive letter X
+            powershell "Get-Partition -DiskNumber $disknum -PartitionNumber 1 | Set-Partition -NewDriveLetter X"
+            powershell "Get-DiskImage \"C:\\$img\""
+
+            # simple sanity check
+            grep "$TEST_MAGIC" /x/a/b > /dev/null
+
+            # unmount the image
+            powershell "Dismount-DiskImage \"C:\\$img\"" > /dev/null
+          done
+        done
