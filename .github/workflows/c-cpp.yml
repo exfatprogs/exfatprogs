@@ -54,13 +54,22 @@ jobs:
         sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
-    - name: build test & install exfatprogs
+    - name: Bootstrap build system
+      run: ./autogen.sh
+    - name: Test building exfatprogs on arbitrary directory
+      shell: bash
       run: |
-        ./autogen.sh
-        ./configure
+        set -e
+        CONFIG_SCRIPT="$(realpath ./configure)"
+
+        pushd "$(mktemp -d)"
+        "${CONFIG_SCRIPT}"
         make -j$((`nproc`+1))
         sudo make install
         make distclean
+        popd
+    - name: Build exfatprogs for test target
+      run: |
         ./configure --host=${{ matrix.host }} CFLAGS=--static
         make -j$((`nproc`+1))
     - name: run fsck repair testcases
@@ -175,7 +184,7 @@ jobs:
         TAR_FILE="$(realpath "images-${{ matrix.name }}.tar")"
         popd
 
-        mv "$TAR_FILE" .
+        mv -f "$TAR_FILE" .
     - name: Stage image bundle as artifact
       uses: actions/upload-artifact@v7
       with:
