@@ -79,6 +79,7 @@ struct exfat_blk_dev {
 	unsigned long long num_sectors;
 	unsigned int num_clusters;
 	unsigned int cluster_size;
+	unsigned int dev_sector_size;
 	bool isblk;
 };
 

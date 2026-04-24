@@ -87,6 +87,9 @@ The \fIsize\fR argument is specified in bytes or may be specified with
 bytes.
 The default value is the sector size reported by the device, or 512 bytes if the
 device sector size cannot be determined.
+An exFAT volume formatted with the sector size value other than that of the
+device is unusable in most operating systems. \fBDO NOT use this option\fR
+unless you're absolutely sure that you know what you're doing.
 .TP
 .BR \-c ", " \-\-cluster\-size =\fIsize\fR
 Specifies the cluster size of the exFAT file system.

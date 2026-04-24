@@ -1108,6 +1108,27 @@ int main(int argc, char *argv[])
 	ret = exfat_get_blk_dev_info(&ui, &bd);
 	if (ret < 0)
 		goto out;
+	if (!quiet && ui.sector_size) {
+		exfat_info(
+			"!!! Use -s option only if you know what you're doing !!!\n"
+			"There are legitimate use cases for this option, but you really should be fixing\n"
+			"the underlying hardware issue rather than overriding the sector size to force\n"
+			"things to work!\n"
+		);
+
+		if (bd.dev_sector_size && bd.dev_sector_size != ui.sector_size) {
+			/*
+			 * The user supplied the sector size(-b option) and it doesn't match up with
+			 * that of the device the kernel reported.
+			 *
+			 * Linux kernel exFAT is able to handle it by increasing the logical sector
+			 * size of the blockdev, but other implementations are not as sophisticated.
+			 */
+			exfat_info("!!! Sector size mismatch: requested=%u, dev=%u !!!\n",
+				   ui.sector_size, bd.dev_sector_size);
+			exfat_info("!!! The volume will be unusable in many operating systems !!!\n");
+		}
+	}
 
 	ret = exfat_build_mkfs_info(&bd, &ui);
 	if (ret)

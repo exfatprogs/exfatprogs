@@ -197,10 +197,16 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 	if (!ui->boundary_align)
 		ui->boundary_align = DEFAULT_BOUNDARY_ALIGNMENT;
 
+	bd->dev_sector_size = 0;
+	if (ioctl(fd, BLKSSZGET, &bd->dev_sector_size) < 0)
+		bd->dev_sector_size = 0;
+
 	if (ui->sector_size)
 		bd->sector_size = ui->sector_size;
-	else if (ioctl(fd, BLKSSZGET, &bd->sector_size) < 0)
+	else if (bd->dev_sector_size == 0)
 		bd->sector_size = DEFAULT_SECTOR_SIZE;
+	else
+		bd->sector_size = bd->dev_sector_size;
 	bd->sector_size_bits = sector_size_bits(bd->sector_size);
 	bd->num_sectors = blk_dev_size / bd->sector_size;
 	bd->num_clusters = blk_dev_size / ui->cluster_size;
