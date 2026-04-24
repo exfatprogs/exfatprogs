@@ -374,7 +374,7 @@ int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs)
 	}
 
 out:
-	exfat_unmap_zeromem(zm, bs, &mapped);
+	exfat_unmap_mm(zm, bs, &mapped);
 	return ret;
 }
 
@@ -905,7 +905,7 @@ int exfat_check_written_data(struct exfat_blk_dev *bd,
 
 out:
 	free(verify);
-	exfat_unmap_zeromem(zm, len, &zmapped);
+	exfat_unmap_mm(zm, len, &zmapped);
 	return ret;
 }
 
@@ -931,7 +931,7 @@ void exfat_close_fd_devzero(void)
 	fd_devzero = -1;
 }
 
-const void *exfat_map_zeromem(const size_t len, bool *mapped)
+static void *exfat_do_map_zerodev(const size_t len, bool *mapped, int prot, int flags)
 {
 	void *ret;
 
@@ -940,7 +940,8 @@ const void *exfat_map_zeromem(const size_t len, bool *mapped)
 
 #ifdef _POSIX_MAPPED_FILES
 	if (fd_devzero >= 0) {
-		ret = mmap(NULL, len, PROT_READ, MAP_SHARED, fd_devzero, 0);
+		assert(prot > 0 && flags > 0);
+		ret = mmap(NULL, len, prot, flags, fd_devzero, 0);
 
 		assert(ret != NULL);
 		if (ret != MAP_FAILED) {
@@ -964,13 +965,38 @@ const void *exfat_map_zeromem(const size_t len, bool *mapped)
 	return ret;
 }
 
-int exfat_unmap_zeromem(const void *m, const size_t len, const bool *mapped)
+const void *exfat_map_zeromem(const size_t len, bool *mapped)
+{
+	int prot = -1;
+	int flags = -1;
+
+#ifdef _POSIX_MAPPED_FILES
+	prot = PROT_READ;
+	flags = MAP_SHARED;
+#endif
+	return exfat_do_map_zerodev(len, mapped, prot, flags);
+}
+
+void *exfat_map_blankmem(const size_t len, bool *mapped)
+{
+	int prot = -1;
+	int flags = -1;
+
+#ifdef _POSIX_MAPPED_FILES
+	prot = PROT_READ|PROT_WRITE;
+	flags = MAP_PRIVATE;
+#endif
+	return exfat_do_map_zerodev(len, mapped, prot, flags);
+}
+
+int exfat_unmap_mm(const void *m, const size_t len, bool *mapped)
 {
 	if (m == NULL)
 		return 0;
 
 #ifdef _POSIX_MAPPED_FILES
 	if (*mapped) {
+		*mapped = false;
 		if (len > 0)
 			return munmap((void *)m, len);
 		return 0;

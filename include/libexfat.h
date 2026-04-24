@@ -283,9 +283,25 @@ void exfat_close_fd_devzero(void);
  *
  * Note that /dev/zero mapping do not count towards committed memory. See
  * vm.overcommit for detail.
+ *
+ * For rw version of this function, see exfat_map_blankmem().
  */
 const void *exfat_map_zeromem(const size_t len, bool *mapped);
-int exfat_unmap_zeromem(const void *m, const size_t len, const bool *mapped);
+/*
+ * Map read-writeable pages suitable for composing binary data containing mostly
+ * zeros(e.g. allocation bitmap).
+ *
+ * The function has the exact same semantics as exfat_map_zeromem(), except that
+ * it calls mmap() with PROT_READ|PROT_WRITE and MAP_PRIVATE.
+ */
+void *exfat_map_blankmem(const size_t len, bool *mapped);
+/*
+ * Unmap memory mapping mapped with exfat_map_zeromem() and exfat_map_blankmem().
+ *
+ * If mapped is set, call munmap(), clear mapped unset and return the value
+ * returned from munmap(). Otherwise, call free() and return 0.
+ */
+int exfat_unmap_mm(const void *m, const size_t len, bool *mapped);
 
 /*
  * Exfat Print
