@@ -180,7 +180,7 @@ jobs:
           done
         done
 
-        tar -S -cf "images-${{ matrix.name }}.tar" "images-${{ matrix.name }}"
+        tar -cf "images-${{ matrix.name }}.tar" "images-${{ matrix.name }}"
         TAR_FILE="$(realpath "images-${{ matrix.name }}.tar")"
         popd
 
@@ -208,7 +208,7 @@ jobs:
       run: |
         set -e
 
-        tar -S -C /c -xf images-${{ matrix.name }}.tar
+        tar -C /c -xf images-${{ matrix.name }}.tar
 
         for bs in $TEST_BLOCKSIZES
         do
