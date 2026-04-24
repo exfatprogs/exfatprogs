@@ -230,14 +230,89 @@ out:
 	return ret;
 }
 
-ssize_t exfat_read(int fd, void *buf, size_t size, off_t offset)
+ssize_t exfat_read(int fd, void *buf, size_t size_in, off_t offset)
 {
-	return pread(fd, buf, size, offset);
+	int ret;
+	off_t size = size_in;
+
+	if (size > SSIZE_MAX)
+		size = SSIZE_MAX;
+
+	ret = exfat_read2(fd, buf, &size, &offset);
+	if (ret < 0)
+		return ret;
+	return size_in - (size_t)size;
 }
 
-ssize_t exfat_write(int fd, void *buf, size_t size, off_t offset)
+int exfat_read2(int fd, void *buf, off_t *size, off_t *offset)
 {
-	return pwrite(fd, buf, size, offset);
+	uint8_t *m = buf;
+	size_t rem;
+	ssize_t size_read;
+
+	while (*size > 0) {
+		rem = (size_t)MIN(*size, SSIZE_MAX);
+
+		size_read = *offset >= 0 ?
+			pread(fd, m, rem, *offset) :
+			read(fd, m, rem);
+		if (size_read == 0)
+			return 1;
+		if (size_read < 0)
+			return -errno;
+		assert((size_t)size_read <= rem);
+
+		m += size_read;
+		*size -= size_read;
+		if (*offset >= 0)
+			*offset += size_read;
+	}
+
+	return 0;
+}
+
+ssize_t exfat_write(int fd, const void *buf, size_t size_in, off_t offset)
+{
+	int ret;
+	off_t size = size_in;
+
+	if (size > SSIZE_MAX)
+		size = SSIZE_MAX;
+
+	ret = exfat_write2(fd, buf, &size, &offset);
+	if (ret)
+		return ret;
+	return size_in - (size_t)size;
+}
+
+int exfat_write2(int fd, const void *buf, off_t *size, off_t *offset)
+{
+	const uint8_t *m = buf;
+	size_t rem;
+	ssize_t size_written;
+
+	while (*size > 0) {
+		rem = (size_t)MIN(*size, SSIZE_MAX);
+
+		size_written = *offset >= 0 ?
+			pwrite(fd, m, rem, *offset) :
+			write(fd, m, rem);
+		if (size_written == 0) {
+			/* the dark corner of POSIX: we mirror glibc's defence mechanism here */
+			exfat_debug("pwrite() returned zero. This VFS is doing something fishy!");
+			return -EIO;
+		}
+		if (size_written < 0)
+			return -errno;
+		assert((size_t)size_written <= rem);
+
+		m += size_written;
+		*size -= size_written;
+		if (*offset >= 0)
+			*offset += size_written;
+	}
+
+	return 0;
 }
 
 int exfat_write_zero(int fd, off_t size, off_t offset)
@@ -250,19 +325,23 @@ int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs)
 	bool mapped = false;
 	const void *zm;
 	int ret = 0;
+	size_t iter_size;
+	ssize_t wsize;
 
 	if (bs == 0)
 		bs = 4 * KB;
-
-	assert((off_t)bs > 0);
 
 	zm = exfat_map_zeromem(bs, &mapped);
 	if (zm == NULL)
 		return -errno;
 
 	while (size > 0) {
-		const size_t iter_size = MIN(size, (off_t)bs);
-		const ssize_t wsize = pwrite(fd, zm, iter_size, offset);
+		iter_size = (size_t)MIN(size, SSIZE_MAX);
+		iter_size = MIN(iter_size, bs);
+
+		wsize = offset >= 0 ?
+			pwrite(fd, zm, iter_size, offset) :
+			write(fd, zm, iter_size);
 
 		if (wsize <= 0) {
 			ret = -EIO;
@@ -270,7 +349,8 @@ int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs)
 		}
 
 		size -= wsize;
-		offset += wsize;
+		if (offset >= 0)
+			offset += wsize;
 	}
 
 out:

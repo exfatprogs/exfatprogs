@@ -174,8 +174,41 @@ void boot_calc_checksum(const unsigned char *sector, size_t size,
 void init_user_input(struct exfat_user_input *ui);
 int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		struct exfat_blk_dev *bd);
+/*
+ * Load the requested size of data from the file onto buf
+ *
+ * The function ensures that all of the requested size has been read and memory
+ * at buf contains the data read from the file. If offset is a negative value,
+ * read() is used. Otherwise, pread() is used to do I/O.
+ *
+ * If all of the size cannot be read due to an error, -errno is returned.
+ * Otherwise, the number of bytes read is returned. Note that the number of
+ * bytes returned may be less than the size requested.
+ *
+ * Note that the function will read SSIZE_MAX bytes(~2GB on 32-bit arch) at most
+ * due to interface limitations. exfat_read2() has no such limitation.
+ */
 ssize_t exfat_read(int fd, void *buf, size_t size, off_t offset);
-ssize_t exfat_write(int fd, void *buf, size_t size, off_t offset);
+int exfat_read2(int fd, void *buf, off_t *size, off_t *offset);
+/*
+ * Write the requested buffer to the file
+ *
+ * The function ensures that all of the requested buffer has been written to the
+ * file. If offset is a negative value, write() is used. Otherwise, pwrite() is
+ * used to do I/O.
+ *
+ * If all of the buffer data cannot be written read due to an error, -errno.
+ * Otherwise, the number of bytes successfully written is returned.
+ *
+ * Note that the function will write SSIZE_MAX bytes(~2GB on 32-bit arch) at
+ * most due to interface limitations. exfat_write2() has no such limitation.
+ *
+ * In case of an error, the caller cannot determine how much data has been
+ * written to the file with the function. exfat_write2() may be used where such
+ * info is required.
+ */
+ssize_t exfat_write(int fd, const void *buf, size_t size, off_t offset);
+int exfat_write2(int fd, const void *buf, off_t *size, off_t *offset);
 int exfat_write_zero(int fd, off_t size, off_t offset);
 int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs);
 int exfat_discard_blocks(int fd, uint64_t start, uint64_t len);
