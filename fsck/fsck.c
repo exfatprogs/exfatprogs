@@ -311,9 +311,8 @@ static int boot_region_checksum(int dev_fd,
 
 	checksum = 0;
 	for (i = 0; i < 11; i++) {
-		if (exfat_read(dev_fd, sect, sect_size,
-				bs_offset * sect_size + i * sect_size) !=
-				(ssize_t)sect_size) {
+		if (!exfat_read_full(dev_fd, sect, sect_size,
+				bs_offset * sect_size + i * sect_size)) {
 			exfat_err("failed to read boot region\n");
 			ret = -EIO;
 			goto out;
@@ -321,9 +320,8 @@ static int boot_region_checksum(int dev_fd,
 		boot_calc_checksum(sect, sect_size, i == 0, &checksum);
 	}
 
-	if (exfat_read(dev_fd, sect, sect_size,
-			bs_offset * sect_size + 11 * sect_size) !=
-			(ssize_t)sect_size) {
+	if (!exfat_read_full(dev_fd, sect, sect_size,
+			bs_offset * sect_size + 11 * sect_size)) {
 		exfat_err("failed to read a boot checksum sector\n");
 		ret = -EIO;
 		goto out;
@@ -353,8 +351,7 @@ static int exfat_mark_volume_dirty(struct exfat *exfat, bool dirty)
 		flags &= ~0x02;
 
 	exfat->bs->bsx.vol_flags = cpu_to_le16(flags);
-	if (exfat_write(exfat->blk_dev->dev_fd, exfat->bs,
-			sizeof(struct pbr), 0) != (ssize_t)sizeof(struct pbr)) {
+	if (!exfat_write_full(exfat->blk_dev->dev_fd, exfat->bs, sizeof(struct pbr), 0)) {
 		exfat_err("failed to set VolumeDirty\n");
 		return -EIO;
 	}
@@ -381,8 +378,7 @@ static int read_boot_region(struct exfat_blk_dev *bd, struct pbr **pbr,
 		return -ENOMEM;
 	}
 
-	if (exfat_read(bd->dev_fd, bs, sizeof(*bs),
-			bs_offset * sect_size) != (ssize_t)sizeof(*bs)) {
+	if (!exfat_read_full(bd->dev_fd, bs, sizeof(*bs), bs_offset * sect_size)) {
 		exfat_err("failed to read a boot sector\n");
 		ret = -EIO;
 		goto err;
@@ -464,20 +460,16 @@ static int restore_boot_region(struct exfat_blk_dev *bd, unsigned int sect_size)
 		return -ENOMEM;
 
 	for (i = 0; i < 12; i++) {
-		if (exfat_read(bd->dev_fd, sector, sect_size,
-				BACKUP_BOOT_SEC_IDX * sect_size +
-				i * sect_size) !=
-				(ssize_t)sect_size) {
+		if (!exfat_read_full(bd->dev_fd, sector, sect_size,
+				     BACKUP_BOOT_SEC_IDX * sect_size + i * sect_size)) {
 			ret = -EIO;
 			goto free_sector;
 		}
 		if (i == 0)
 			((struct pbr *)sector)->bsx.perc_in_use = 0xff;
 
-		if (exfat_write(bd->dev_fd, sector, sect_size,
-				BOOT_SEC_IDX * sect_size +
-				i * sect_size) !=
-				(ssize_t)sect_size) {
+		if (!exfat_write_full(bd->dev_fd, sector, sect_size,
+				      BOOT_SEC_IDX * sect_size + i * sect_size)) {
 			ret = -EIO;
 			goto free_sector;
 		}
@@ -507,8 +499,7 @@ static int exfat_boot_region_check(struct exfat_blk_dev *blkdev,
 	if (boot_sect == NULL)
 		return -ENOMEM;
 
-	if (exfat_read(blkdev->dev_fd, boot_sect,
-		       sizeof(*boot_sect), 0) != (ssize_t)sizeof(*boot_sect)) {
+	if (!exfat_read_full(blkdev->dev_fd, boot_sect, sizeof(*boot_sect), 0)) {
 		exfat_err("failed to read Main boot sector\n");
 		free(boot_sect);
 		return -EIO;
@@ -999,8 +990,8 @@ static int read_bitmap(struct exfat *exfat)
 		exfat_repair_ask(&exfat_fsck, ER_DE_BITMAP,
 				"ERROR: invalid bitmap size. %lld", map_size)) {
 		dentry->bitmap_size = cpu_to_le64(need_map_size);
-		if (pwrite(exfat->blk_dev->dev_fd, dentry, DENTRY_SIZE,
-				filter.out.dev_offset) != DENTRY_SIZE) {
+		if (!exfat_write_full(exfat->blk_dev->dev_fd, dentry, DENTRY_SIZE,
+				      filter.out.dev_offset)) {
 			exfat_err("failed to write bitmap dentry\n");
 			return -EIO;
 		}
@@ -1027,10 +1018,9 @@ static int read_bitmap(struct exfat *exfat)
 			       le32_to_cpu(dentry->bitmap_start_clu),
 			       DIV_ROUND_UP(exfat->disk_bitmap_size,
 					    exfat->clus_size));
-	if (exfat_read(exfat->blk_dev->dev_fd, exfat->disk_bitmap,
+	if (!exfat_read_full(exfat->blk_dev->dev_fd, exfat->disk_bitmap,
 			exfat->disk_bitmap_size,
-			exfat_c2o(exfat, exfat->disk_bitmap_clus)) !=
-			(ssize_t)exfat->disk_bitmap_size)
+			exfat_c2o(exfat, exfat->disk_bitmap_clus)))
 		retval = -EIO;
 out:
 	free(filter.out.dentry_set);
@@ -1066,7 +1056,6 @@ static bool exfat_has_default_upcase_table(struct exfat *exfat, clus_t *clu)
 {
 	char *upcase;
 	bool ret = false;
-	int size;
 	clus_t def_clu = DIV_ROUND_UP(EXFAT_BITMAP_SIZE(exfat->clus_count),
 			exfat->clus_size) + EXFAT_FIRST_CLUSTER;
 
@@ -1078,11 +1067,9 @@ static bool exfat_has_default_upcase_table(struct exfat *exfat, clus_t *clu)
 		*clu = def_clu;
 
 again:
-	size = pread(exfat->blk_dev->dev_fd, upcase,
-			sizeof(default_upcase_table),
-			exfat_c2o(exfat, *clu));
-	if (size == sizeof(default_upcase_table)) {
-		if (!memcmp(upcase, default_upcase_table, size)) {
+	if (exfat_read_full(exfat->blk_dev->dev_fd, upcase, sizeof(default_upcase_table),
+			    exfat_c2o(exfat, *clu))) {
+		if (!memcmp(upcase, default_upcase_table, sizeof(default_upcase_table))) {
 			ret = true;
 			goto out;
 		}
@@ -1103,7 +1090,7 @@ static int exfat_repair_upcase_table(struct exfat *exfat,
 		struct exfat_dentry *dentry, off_t dentry_off)
 {
 	clus_t clu;
-	int ret;
+	bool ret;
 	off_t upcase_off;
 	size_t nbytes;
 	struct exfat_dentry ed;
@@ -1138,9 +1125,9 @@ static int exfat_repair_upcase_table(struct exfat *exfat,
 		}
 
 		upcase_off = exfat_c2o(exfat, clu);
-		ret = pwrite(fd, default_upcase_table,
-			     sizeof(default_upcase_table), upcase_off);
-		if (ret != sizeof(default_upcase_table)) {
+		ret = exfat_write_full(fd, default_upcase_table,
+					sizeof(default_upcase_table), upcase_off);
+		if (!ret) {
 			exfat_err("failed to write new upcase_table\n");
 			return -EIO;
 		}
@@ -1167,7 +1154,8 @@ static int exfat_repair_upcase_table(struct exfat *exfat,
 	dentry->upcase_size = cpu_to_le64(sizeof(default_upcase_table));
 
 	/* Write upcase table dentry */
-	if (pwrite(fd, dentry, DENTRY_SIZE, dentry_off) != DENTRY_SIZE) {
+	ret = exfat_write_full(fd, dentry, DENTRY_SIZE, dentry_off);
+	if (!ret) {
 		exfat_err("failed to write upcase_table dentry\n");
 		return -EIO;
 	}
@@ -1237,9 +1225,9 @@ static int read_upcase_table(struct exfat_fsck *fsck)
 		goto out;
 	}
 
-	if (exfat_read(exfat->blk_dev->dev_fd, upcase, size,
+	if (!exfat_read_full(exfat->blk_dev->dev_fd, upcase, size,
 			exfat_c2o(exfat,
-			le32_to_cpu(dentry->upcase_start_clu))) != size) {
+			le32_to_cpu(dentry->upcase_start_clu)))) {
 		exfat_err("failed to read upcase table\n");
 		retval = -EIO;
 		goto out;
@@ -1471,9 +1459,9 @@ static int write_bitmap(struct exfat_fsck *fsck)
 		byte_offset = ((i * sizeof(bitmap_t)) / 512) * 512;
 		write_bytes = MIN(512, bitmap_bytes - byte_offset);
 
-		if (exfat_write(exfat->blk_dev->dev_fd,
+		if (!exfat_write_full(exfat->blk_dev->dev_fd,
 				(char *)ohead_b + byte_offset, write_bytes,
-				dev_offset + byte_offset) != (ssize_t)write_bytes)
+				dev_offset + byte_offset))
 			return -EIO;
 
 		i = (byte_offset + write_bytes) / sizeof(bitmap_t);

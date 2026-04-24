@@ -285,11 +285,9 @@ static int exfat_create_volume_boot_record(struct exfat_blk_dev *bd,
 static int write_fat_entry(struct exfat_user_input *ui, int fd,
 		__le32 clu, unsigned long long offset)
 {
-	int nbyte;
 	off_t fat_entry_offset = finfo.fat_byte_off + (offset * sizeof(__le32));
 
-	nbyte = pwrite(fd, (__u8 *) &clu, sizeof(__le32), fat_entry_offset);
-	if (nbyte != sizeof(int)) {
+	if (!exfat_write_full(fd, (__u8 *) &clu, sizeof(__le32), fat_entry_offset)) {
 		exfat_err("write failed, offset : %llu, clu : %x\n",
 			offset, clu);
 		return -1;
@@ -401,7 +399,6 @@ static int exfat_create_bitmap(struct exfat_blk_dev *bd,
 {
 	char *bitmap;
 	unsigned int full_bytes, rem_bits, zero_offset;
-	unsigned int nbytes;
 	int ret = 0;
 
 	bitmap = malloc(finfo.bitmap_byte_len);
@@ -425,10 +422,8 @@ static int exfat_create_bitmap(struct exfat_blk_dev *bd,
 		memset(bitmap + zero_offset, 0, finfo.bitmap_byte_len - zero_offset);
 
 
-	nbytes = pwrite(bd->dev_fd, bitmap, finfo.bitmap_byte_len, finfo.bitmap_byte_off);
-	if (nbytes != finfo.bitmap_byte_len) {
-		exfat_err("write failed, nbytes : %d, bitmap_len : %d\n",
-			nbytes, finfo.bitmap_byte_len);
+	if (!exfat_write_full(bd->dev_fd, bitmap, finfo.bitmap_byte_len, finfo.bitmap_byte_off)) {
+		exfat_err("write failed, bitmap_len : %d\n", finfo.bitmap_byte_len);
 		free(bitmap);
 		return -1;
 	}
@@ -454,7 +449,7 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 {
 	struct exfat_dentry ed[4] = {0};
 	int dentries_len = sizeof(ed);
-	int nbytes, ret;
+	int ret;
 
 	ret = exfat_write_zero2(bd->dev_fd, ui->cluster_size,
 			finfo.root_byte_off, ui->cluster_size);
@@ -504,10 +499,8 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 		ed[3].upcase_size = cpu_to_le64(finfo.ut_byte_len);
 	}
 
-	nbytes = pwrite(bd->dev_fd, ed, dentries_len, finfo.root_byte_off);
-	if (nbytes != dentries_len) {
-		exfat_err("write failed, nbytes : %d, dentries_len : %d\n",
-			nbytes, dentries_len);
+	if (!exfat_write_full(bd->dev_fd, ed, dentries_len, finfo.root_byte_off)) {
+		exfat_err("write failed, dentries_len : %d\n", dentries_len);
 		return -1;
 	}
 
@@ -620,7 +613,8 @@ static int exfat_load_upcase(struct exfat_user_input *ui)
 	uint8_t *m = NULL;
 	void *nm;
 	off_t len;
-	size_t buflen = 0, size = 0;
+	size_t size = 0;
+	ssize_t rlen;
 
 	if (!exfat_ui_has_upcase_file(ui)) {
 		/* set defaults and return */
@@ -672,41 +666,27 @@ static int exfat_load_upcase(struct exfat_user_input *ui)
 	if (m == NULL)
 		goto nomem;
 
-	lseek(fd, 0, SEEK_SET);
-
-	while (true) {
-		const size_t rem = size - buflen;
-		ssize_t rsize;
-
-		rsize = read(fd, m + buflen, rem);
-		if (rsize == 0)
-			break;
-		if (rsize < 0) {
-			ret = -errno;
-			goto free;
-		}
-
-		buflen += rsize;
-		if (buflen > EXFAT_MAX_UPCASE_TABLE_SIZE) {
-			ret = -EFBIG;
-			goto free;
-		}
-		if (len > 0 && buflen >= (size_t)len)
-			break;
+	rlen = exfat_read(fd, m, size, 0);
+	if (rlen < 0) {
+		ret = -errno;
+		goto free;
+	} else if ((size_t)rlen > EXFAT_MAX_UPCASE_TABLE_SIZE) {
+		ret = -EFBIG;
+		goto free;
 	}
 
 	/* shrink to fit before returning, ignoring errors */
-	if (buflen == 0) {
+	if (rlen == 0) {
 		free(m);
 		m = NULL;
-	} else if (buflen != size) {
-		nm = realloc(m, buflen);
+	} else if ((size_t)rlen != size) {
+		nm = realloc(m, rlen);
 		if (nm != NULL)
 			m = nm;
 	}
 
 	ui->upcase.table = ui->upcase.m = m;
-	ui->upcase.len = buflen;
+	ui->upcase.len = rlen;
 	ui->upcase.free = exfat_free_upcase_m;
 	goto out;
 

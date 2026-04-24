@@ -47,11 +47,10 @@ static ssize_t write_block(struct exfat_de_iter *iter, unsigned int block)
 		if (BITMAP_GET(desc->dirty, i)) {
 			device_offset = exfat_c2o(exfat, desc->p_clus) +
 				desc->offset;
-			if (exfat_write(exfat->blk_dev->dev_fd,
+			if (!exfat_write_full(exfat->blk_dev->dev_fd,
 					desc->buffer + i * iter->write_size,
 					iter->write_size,
-					device_offset + i * iter->write_size)
-					!= (ssize_t)iter->write_size)
+					device_offset + i * iter->write_size))
 				return -EIO;
 			BITMAP_CLEAR(desc->dirty, i);
 		}
@@ -384,8 +383,8 @@ int exfat_de_iter_revert(struct exfat_de_iter *iter, int num)
 	dest_bd->p_clus = clu;
 	dest_bd->offset = offset;
 
-	if (exfat_read(exfat->blk_dev->dev_fd, dest_bd->buffer, iter->read_size,
-			exfat_c2o(exfat, clu) + offset) != (ssize_t)iter->read_size)
+	if (!exfat_read_full(exfat->blk_dev->dev_fd, dest_bd->buffer, iter->read_size,
+			exfat_c2o(exfat, clu) + offset))
 		return -EIO;
 
 out:
@@ -906,14 +905,14 @@ static int exfat_write_dentry_set(struct exfat *exfat,
 		sec_half_off = exfat_c2o(exfat, next_clus);
 	}
 
-	if (exfat_write(exfat->blk_dev->dev_fd, dset, first_half_len,
-			first_half_off) != (ssize_t)first_half_len)
+	if (!exfat_write_full(exfat->blk_dev->dev_fd, dset, first_half_len,
+			first_half_off))
 		return -EIO;
 
 	if (sec_half_len) {
 		dset = (struct exfat_dentry *)((char *)dset + first_half_len);
-		if (exfat_write(exfat->blk_dev->dev_fd, dset, sec_half_len,
-				sec_half_off) != (ssize_t)sec_half_len)
+		if (!exfat_write_full(exfat->blk_dev->dev_fd, dset, sec_half_len,
+				sec_half_off))
 			return -EIO;
 	}
 
