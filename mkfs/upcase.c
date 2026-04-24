@@ -18,19 +18,11 @@ int exfat_create_upcase_table(struct exfat_blk_dev *bd,
 {
 	off_t zero_ofs;
 	off_t zero_len;
-	ssize_t nbytes;
 	int ret;
 
 	assert(finfo.root_byte_off >= finfo.ut_byte_off);
 
-	/*
-	 * FIXME bytes written in [p]write() may be less than requested len.
-	 * This won't work if the table is large enough.
-	 *
-	 * TODO do this in a loop.
-	 */
-	nbytes = pwrite(bd->dev_fd, ui->upcase.table, ui->upcase.len, finfo.ut_byte_off);
-	if (nbytes != (ssize_t)ui->upcase.len)
+	if (!exfat_write_full(bd->dev_fd, ui->upcase.table, ui->upcase.len, finfo.ut_byte_off))
 		return -1;
 	if (ui->verify) {
 		ret = exfat_check_written_data(bd,

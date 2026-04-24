@@ -153,7 +153,7 @@ static ssize_t dump_range(struct exfat2img *ei, off_t start, off_t end)
 {
 	struct exfat *exfat = ei->exfat;
 	size_t len, total_len = 0;
-	ssize_t ret;
+	bool ret;
 
 	if (ei->is_stdout) {
 		unsigned int sc, sc_offset;
@@ -169,19 +169,22 @@ static ssize_t dump_range(struct exfat2img *ei, off_t start, off_t end)
 	}
 
 	while (start < end) {
-		len = (size_t)MIN(end - start, exfat->clus_size);
+		off_t range_delta = end - start;
 
-		ret = exfat_read(exfat->blk_dev->dev_fd,
+		range_delta = MIN(range_delta, SSIZE_MAX);
+		len = MIN((size_t)range_delta, exfat->clus_size);
+
+		ret = exfat_read_full(exfat->blk_dev->dev_fd,
 				 ei->dump_cluster, len, start);
-		if (ret != (ssize_t)len) {
+		if (!ret) {
 			exfat_err("failed to read %llu bytes at %llu\n",
 				  (unsigned long long)len,
 				  (unsigned long long)start);
 			return -EIO;
 		}
 
-		ret = pwrite(ei->out_fd, ei->dump_cluster, len, start);
-		if (ret != (ssize_t)len) {
+		ret = exfat_write_full(ei->out_fd, ei->dump_cluster, len, start);
+		if (!ret) {
 			exfat_err("failed to write %llu bytes at %llu\n",
 				  (unsigned long long)len,
 				  (unsigned long long)start);
@@ -542,7 +545,7 @@ static int dump_bytes_to_stdout(struct exfat2img *ei,
 {
 	struct exfat *exfat = ei->exfat;
 	size_t len;
-	ssize_t ret;
+	bool ret;
 
 	if (start != ei->stdout_offset) {
 		exfat_err("try to skip for stdout at %llu, expected: %llu\n",
@@ -553,17 +556,17 @@ static int dump_bytes_to_stdout(struct exfat2img *ei,
 
 	while (start < end_excl) {
 		len = (size_t)MIN(end_excl - start, exfat->clus_size);
-		ret = exfat_read(exfat->blk_dev->dev_fd, ei->dump_cluster,
+		ret = exfat_read_full(exfat->blk_dev->dev_fd, ei->dump_cluster,
 				 len, start);
-		if (ret != (ssize_t)len) {
+		if (!ret) {
 			exfat_err("failed to read %llu bytes at %llu\n",
 				  (unsigned long long)len,
 				  (unsigned long long)start);
 			return -EIO;
 		}
 
-		ret = write(ei->out_fd, ei->dump_cluster, len);
-		if (ret != (ssize_t)len) {
+		ret = exfat_write_full(ei->out_fd, ei->dump_cluster, len, -1);
+		if (!ret) {
 			exfat_err("failed to write %llu bytes at %llu\n",
 				  (unsigned long long)len,
 				  (unsigned long long)start);
@@ -608,7 +611,7 @@ static int dump_clusters_to_stdout(struct exfat2img *ei,
 			buf[0] = cc;
 			*((__le32 *)&buf[1]) =
 				cpu_to_le32(cc_clu_count);
-			if (write(ei->out_fd, buf, cc_len) != (ssize_t)cc_len) {
+			if (!exfat_write_full(ei->out_fd, buf, cc_len, -1)) {
 				exfat_err("failed to write cc %d : %u\n for %u ~ %u clusters\n",
 					  cc, cc_clu_count,
 					  start_clu, start_clu + cc_clu_count - 1);
@@ -707,7 +710,7 @@ static int dump_header(struct exfat2img *ei)
 	ei_hdr.cluster_size = cpu_to_le32(exfat->clus_size);
 	ei_hdr.cluster_count = cpu_to_le32(exfat->clus_count);
 
-	if (write(ei->out_fd, &ei_hdr, sizeof(ei_hdr)) != (ssize_t)sizeof(ei_hdr)) {
+	if (!exfat_write_full(ei->out_fd, &ei_hdr, sizeof(ei_hdr), -1)) {
 		exfat_err("failed to write exfat2img header\n");
 		return -EIO;
 	}
@@ -720,7 +723,7 @@ static ssize_t read_stream(int fd, void *buf, size_t len)
 	ssize_t ret;
 
 	while (read_len < len) {
-		ret = read(fd, buf, len - read_len);
+		ret = exfat_read(fd, buf, len - read_len, -1);
 		if (ret < 0) {
 			if (errno != -EAGAIN && errno != -EINTR)
 				return -1;
@@ -784,8 +787,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 			goto out;
 		}
 
-		if (pwrite(ei->out_fd, ei->dump_cluster, len, out_start_off)
-		    != (ssize_t)len) {
+		if (!exfat_write_full(ei->out_fd, ei->dump_cluster, len, out_start_off)) {
 			exfat_err("failed to write first meta region. %llu ~ %llu\n",
 				  (unsigned long long)out_start_off,
 				  (unsigned long long)out_start_off + len);
@@ -838,8 +840,8 @@ static int restore_from_stdin(struct exfat2img *ei)
 					ret = -EIO;
 					goto out;
 				}
-				if (pwrite(ei->out_fd, ei->dump_cluster,
-					   clus_size, out_start_off) != (ssize_t)clus_size) {
+				if (!exfat_write_full(ei->out_fd, ei->dump_cluster,
+						      clus_size, out_start_off)) {
 					exfat_err("failed to write range %llu ~ %llu\n",
 						  (unsigned long long)out_start_off,
 						  (unsigned long long)out_start_off + clus_size);

@@ -216,13 +216,12 @@ static int exfat_show_fs_info(struct exfat *exfat)
 		dump_field("Bitmap size", "%llu", bitmap_len);
 
 		if (bitmap_len > EXFAT_BITMAP_SIZE(exfat->clus_count)) {
-			exfat_err("Invalid bitmap size\n");
+			exfat_err("Invalid bitmap size: %llu\n", bitmap_len);
 			return -EINVAL;
 		}
 
-		ret = exfat_read(bd->dev_fd, exfat->disk_bitmap, bitmap_len,
-				exfat_c2o(exfat, bitmap_clu));
-		if (ret < 0) {
+		if (!exfat_read_full(bd->dev_fd, exfat->disk_bitmap, bitmap_len,
+				exfat_c2o(exfat, bitmap_clu))) {
 			exfat_err("bitmap read failed: %d\n", errno);
 			return -EIO;
 		}

@@ -271,6 +271,13 @@ int exfat_read2(int fd, void *buf, off_t *size, off_t *offset)
 	return 0;
 }
 
+bool exfat_read_full(int fd, void *buf, size_t size, off_t offset)
+{
+	const ssize_t ret = exfat_read(fd, buf, size, offset);
+
+	return ret >= 0 && (size_t)ret == size;
+}
+
 ssize_t exfat_write(int fd, const void *buf, size_t size_in, off_t offset)
 {
 	int ret;
@@ -313,6 +320,13 @@ int exfat_write2(int fd, const void *buf, off_t *size, off_t *offset)
 	}
 
 	return 0;
+}
+
+bool exfat_write_full(int fd, const void *buf, size_t size, off_t offset)
+{
+	const ssize_t ret = exfat_write(fd, buf, size, offset);
+
+	return ret >= 0 && (size_t)ret == size;
 }
 
 int exfat_write_zero(int fd, off_t size, off_t offset)
@@ -500,7 +514,7 @@ ssize_t exfat_utf16_dec(const __u16 *in_str, size_t in_len,
 off_t exfat_get_root_entry_offset(struct exfat_blk_dev *bd)
 {
 	struct pbr *bs;
-	int nbytes;
+	bool ret;
 	unsigned int cluster_size, sector_size;
 	off_t root_clu_off;
 
@@ -510,8 +524,8 @@ off_t exfat_get_root_entry_offset(struct exfat_blk_dev *bd)
 		return -ENOMEM;
 	}
 
-	nbytes = exfat_read(bd->dev_fd, bs, EXFAT_MAX_SECTOR_SIZE, 0);
-	if (nbytes != EXFAT_MAX_SECTOR_SIZE) {
+	ret = exfat_read_full(bd->dev_fd, bs, EXFAT_MAX_SECTOR_SIZE, 0);
+	if (!ret) {
 		exfat_err("boot sector read failed: %d\n", errno);
 		free(bs);
 		return -1;
@@ -835,15 +849,8 @@ int exfat_check_written_data(struct exfat_blk_dev *bd,
 	void *verify = NULL;
 	const void *zm = NULL;
 	bool zmapped = false;
-	ssize_t n;
 	int ret = 0;
 
-	/*
-	 * See read(2) for max return value of read(). Well, if we wanna
-	 * support more than this, exfat_read() should be done in a
-	 * loop.
-	 */
-	assert(len <= 0x7FFFF000);
 	assert(sector > 0);
 
 	if (len == 0)
@@ -853,12 +860,12 @@ int exfat_check_written_data(struct exfat_blk_dev *bd,
 	if (ret)
 		return ret;
 
-	const off_t aligned_off = off & ~((off_t)sector - 1); /* this is evil */
-	const off_t head = off - aligned_off;
-	const off_t aligned_len = ((head + len + sector - 1) / sector) * sector;
+	off_t aligned_off = off & ~((off_t)sector - 1); /* this is evil */
+	off_t head = off - aligned_off;
+	off_t aligned_len = ((head + len + sector - 1) / sector) * sector;
 
 	assert(head >= 0 && head < (off_t)sector);
-	assert(aligned_len > 0 && aligned_len <= 0x7FFFF000 && aligned_len >= (off_t)len);
+	assert(aligned_len > 0 && aligned_len >= (off_t)len);
 
 	if (posix_memalign(&verify, sector, (size_t)aligned_len))
 		return -errno;
@@ -874,11 +881,11 @@ int exfat_check_written_data(struct exfat_blk_dev *bd,
 		buf = zm;
 	}
 
-	n = exfat_read(bd->verify_fd, verify, (size_t)aligned_len, aligned_off);
-	if (n != (ssize_t)aligned_len) {
-		exfat_debug("%s verify read failed (off=%llu, len=%zu)\n",
-					what, (unsigned long long)aligned_off,
-					(size_t)aligned_len);
+	ret = exfat_read2(bd->verify_fd, verify, &aligned_len, &aligned_off);
+	if (ret) {
+		exfat_debug("%s verify read failed (off=%llu, len=%llu)\n", what,
+				(unsigned long long)aligned_off,
+				(unsigned long long)aligned_len);
 		ret = -EIO;
 		goto out;
 	}
@@ -973,12 +980,10 @@ int exfat_unmap_zeromem(const void *m, const size_t len, const bool *mapped)
 
 int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned int sec_off)
 {
-	int ret;
 	unsigned long long offset =
 		(unsigned long long)sec_off * bd->sector_size;
 
-	ret = pread(bd->dev_fd, buf, bd->sector_size, offset);
-	if (ret < 0) {
+	if (!exfat_read_full(bd->dev_fd, buf, bd->sector_size, offset)) {
 		exfat_err("read failed, sec_off : %u\n", sec_off);
 		return -1;
 	}
@@ -988,14 +993,11 @@ int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned int sec_off)
 int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
 		unsigned int sec_off)
 {
-	int bytes;
 	unsigned long long offset =
 		(unsigned long long)sec_off * bd->sector_size;
 
-	bytes = pwrite(bd->dev_fd, buf, bd->sector_size, offset);
-	if (bytes != (int)bd->sector_size) {
-		exfat_err("write failed, sec_off : %u, bytes : %d\n", sec_off,
-			bytes);
+	if (!exfat_write_full(bd->dev_fd, buf, bd->sector_size, offset)) {
+		exfat_err("write failed, sec_off : %u\n", sec_off);
 		return -1;
 	}
 	return 0;
@@ -1047,7 +1049,7 @@ free:
 int exfat_show_volume_serial(int fd)
 {
 	struct pbr *ppbr;
-	int ret;
+	int ret = 0;
 
 	ppbr = malloc(EXFAT_MAX_SECTOR_SIZE);
 	if (!ppbr) {
@@ -1056,8 +1058,7 @@ int exfat_show_volume_serial(int fd)
 	}
 
 	/* read main boot sector */
-	ret = exfat_read(fd, (char *)ppbr, EXFAT_MAX_SECTOR_SIZE, 0);
-	if (ret < 0) {
+	if (!exfat_read_full(fd, (char *)ppbr, EXFAT_MAX_SECTOR_SIZE, 0)) {
 		exfat_err("main boot sector read failed\n");
 		ret = -1;
 		goto free_ppbr;
@@ -1130,9 +1131,7 @@ int exfat_set_volume_serial(struct exfat_blk_dev *bd,
 	}
 
 	/* read main boot sector */
-	ret = exfat_read(bd->dev_fd, (char *)ppbr, EXFAT_MAX_SECTOR_SIZE,
-			BOOT_SEC_IDX);
-	if (ret < 0) {
+	if (!exfat_read_full(bd->dev_fd, (char *)ppbr, EXFAT_MAX_SECTOR_SIZE, BOOT_SEC_IDX)) {
 		exfat_err("main boot sector read failed\n");
 		ret = -1;
 		goto free_ppbr;
@@ -1200,8 +1199,7 @@ int exfat_get_next_clus(struct exfat *exfat, clus_t clus, clus_t *next)
 				exfat->bs->bsx.sect_size_bits;
 	offset += sizeof(clus_t) * clus;
 
-	if (exfat_read(exfat->blk_dev->dev_fd, next, sizeof(*next), offset)
-			!= sizeof(*next))
+	if (!exfat_read_full(exfat->blk_dev->dev_fd, next, sizeof(*next), offset))
 		return -EIO;
 	*next = le32_to_cpu(*next);
 	return 0;
@@ -1256,8 +1254,7 @@ int exfat_set_fat(struct exfat *exfat, clus_t clus, clus_t next_clus)
 
 	next_clus = cpu_to_le32(next_clus);
 
-	if (exfat_write(exfat->blk_dev->dev_fd, &next_clus, sizeof(next_clus),
-			offset) != sizeof(next_clus))
+	if (!exfat_write_full(exfat->blk_dev->dev_fd, &next_clus, sizeof(next_clus), offset))
 		return -EIO;
 	return 0;
 }
@@ -1343,8 +1340,7 @@ int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs)
 		return -ENOMEM;
 	}
 
-	if (exfat_read(bdev->dev_fd, pbr, sizeof(*pbr), 0) !=
-	    (ssize_t)sizeof(*pbr)) {
+	if (!exfat_read_full(bdev->dev_fd, pbr, sizeof(*pbr), 0)) {
 		exfat_err("failed to read a boot sector\n");
 		err = -EIO;
 		goto err;
