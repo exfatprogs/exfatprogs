@@ -398,34 +398,40 @@ static int exfat_create_bitmap(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
 	char *bitmap;
-	unsigned int full_bytes, rem_bits, zero_offset;
+	unsigned int full_bytes, rem_bits;
 	int ret = 0;
+	bool mapped = false;
 
-	bitmap = malloc(finfo.bitmap_byte_len);
-	if (!bitmap) {
+	bitmap = exfat_map_blankmem(finfo.bitmap_byte_len, &mapped);
+	if (bitmap == NULL) {
 		exfat_err("Cannot allocate bitmap: out of memory\n");
 		return -1;
 	}
+#if defined(__linux__) || defined(__FreeBSD__)
+	/*
+	 * Demand paging off /dev/zero is extremely a Linux/FreeBSD thing.
+	 * This code path is not tested at the time of writing because
+	 * exfatprogs is only supported on Linux(might work on FreeBSD
+	 * on top of the compat ABI mode).
+	 */
+	if (!mapped)
+		exfat_info("mmap() for bitmap failed: errno=%d. Falling back to allocating memory.\n"
+			   "Up to %u bytes of memory may be required.\n",
+			   errno, finfo.bitmap_byte_len);
+#endif
 
 	full_bytes = finfo.used_clu_cnt / 8;
 	rem_bits = finfo.used_clu_cnt % 8;
-	zero_offset = full_bytes;
 
 	memset(bitmap, 0xff, full_bytes);
 
-	if (rem_bits != 0) {
+	if (rem_bits != 0)
 		bitmap[full_bytes] = (1 << rem_bits) - 1;
-		++zero_offset;
-	}
-
-	if (zero_offset < finfo.bitmap_byte_len)
-		memset(bitmap + zero_offset, 0, finfo.bitmap_byte_len - zero_offset);
-
 
 	if (!exfat_write_full(bd->dev_fd, bitmap, finfo.bitmap_byte_len, finfo.bitmap_byte_off)) {
 		exfat_err("write failed, bitmap_len : %d\n", finfo.bitmap_byte_len);
-		free(bitmap);
-		return -1;
+		ret = -1;
+		goto out;
 	}
 
 	if (ui->verify) {
@@ -435,13 +441,13 @@ static int exfat_create_bitmap(struct exfat_blk_dev *bd,
 				"bitmap");
 		if (ret) {
 			exfat_err("bitmap verification failed (read-back mismatch)\n");
-			free(bitmap);
-			return ret;
+			goto out;
 		}
 	}
 
-	free(bitmap);
-	return 0;
+out:
+	exfat_unmap_mm(bitmap, finfo.bitmap_byte_len, &mapped);
+	return ret;
 }
 
 static int exfat_create_root_dir(struct exfat_blk_dev *bd,
@@ -836,7 +842,7 @@ static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
 	}
 
 out:
-	exfat_unmap_zeromem(zm, iosize, &mapped);
+	exfat_unmap_mm(zm, iosize, &mapped);
 
 	if (ret)
 		exfat_err("write failed(errno : %d)\n", errno);
