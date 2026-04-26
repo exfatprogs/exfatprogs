@@ -111,7 +111,8 @@ void boot_calc_checksum(const unsigned char *sector, size_t size,
 
 void show_version(void)
 {
-	printf("exfatprogs version : %s\n", EXFAT_PROGS_VERSION);
+	printf("exfatprogs version : %s (%s)\n",
+			EXFAT_PROGS_VERSION, EXFAT_PROGS_RELEASE_DATE);
 }
 
 static inline unsigned int sector_size_bits(unsigned int size)
