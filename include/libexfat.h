@@ -326,4 +326,12 @@ extern unsigned int print_level;
 					"[%s:%4d] " fmt, __func__, 	\
 					__LINE__, ##__VA_ARGS__)
 
+#define exfat_print_guid(f, msg, guid)					\
+		f("%s: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",\
+			(msg),						\
+			(guid)[0], (guid)[1], (guid)[2], (guid)[3],	\
+			(guid)[4], (guid)[5], (guid)[6], (guid)[7],	\
+			(guid)[8], (guid)[9], (guid)[10], (guid)[11],	\
+			(guid)[12], (guid)[13], (guid)[14], (guid)[15])
+
 #endif /* !_LIBEXFAT_H */

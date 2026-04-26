@@ -743,16 +743,6 @@ out:
 	return err;
 }
 
-static inline void print_guid(const char *msg, const __u8 *guid)
-{
-	exfat_info("%s: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
-			msg,
-			guid[0], guid[1], guid[2], guid[3],
-			guid[4], guid[5], guid[5], guid[7],
-			guid[8], guid[9], guid[10], guid[11],
-			guid[12], guid[13], guid[14], guid[15]);
-}
-
 static int set_guid(__u8 *guid, const char *input)
 {
 	int i, j, zero_len = 0;
@@ -818,7 +808,7 @@ int exfat_read_volume_guid(struct exfat *exfat)
 	exfat_calc_dentry_checksum(dentry, &checksum, true);
 
 	if (cpu_to_le16(checksum) == dentry->dentry.guid.checksum)
-		print_guid("GUID", dentry->dentry.guid.guid);
+		exfat_print_guid(exfat_info, "GUID", dentry->dentry.guid.guid);
 	else
 		exfat_info("GUID is corrupted, please delete it or set a new one\n");
 
@@ -893,7 +883,7 @@ int exfat_set_volume_guid(struct exfat *exfat, const char *guid)
 	err = exfat_add_dentry_set(exfat, &loc, dentry, 1, false);
 	if (!err) {
 		if (guid)
-			print_guid("new GUID", dentry->dentry.guid.guid);
+			exfat_print_guid(exfat_info, "new GUID", dentry->dentry.guid.guid);
 		else
 			exfat_info("GUID is deleted\n");
 	}
