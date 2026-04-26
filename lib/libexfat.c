@@ -15,6 +15,7 @@
 #ifdef _POSIX_MAPPED_FILES
 #include <sys/mman.h>
 #endif
+#include <sys/utsname.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -146,13 +147,79 @@ void init_user_input(struct exfat_user_input *ui)
 	ui->discard = true;
 }
 
+static size_t count_dots(const char *s)
+{
+	size_t ret = 0;
+
+	while (*s) {
+		if (*s == '.')
+			ret++;
+		s++;
+	}
+
+	return ret;
+}
+
+static int exfat_cmp_kernel_ver(const unsigned short *req)
+{
+	struct utsname uts;
+	unsigned short v[3] = { 0, };
+	unsigned long long nreq = 0, nhost = 0;
+	int ret;
+
+	ret = uname(&uts);
+	if (ret)
+		return -1;
+
+	switch (count_dots(uts.release)) {
+	case 0:
+		ret = sscanf(uts.release, "%hu", v) != 1;
+		break;
+	case 1:
+		ret = sscanf(uts.release, "%hu.%hu", v + 0, v + 1) != 2;
+		break;
+	default:
+		ret = sscanf(uts.release, "%hu.%hu.%hu", v + 0, v + 1, v + 2) != 3;
+	}
+	if (ret) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	exfat_debug("Kernel version: %hu.%hu.%hu\n", v[0], v[1], v[2]);
+
+	nreq  |= (unsigned long long)req[0] << 32;
+	nreq  |= (unsigned long long)req[1] << 16;
+	nreq  |= (unsigned long long)req[2];
+	nhost |= (unsigned long long)v[0]   << 32;
+	nhost |= (unsigned long long)v[1]   << 16;
+	nhost |= (unsigned long long)v[2];
+
+	return nreq > nhost ? 1 : 0;
+}
+
 int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		struct exfat_blk_dev *bd)
 {
+	static const unsigned short MIN_KERNEL_VER[3] = { 2, 6, 0 };
 	int fd, ret = -1;
 	off_t blk_dev_size;
 	struct stat st;
 	unsigned long long blk_dev_offset = 0;
+
+	/* Assert kernel version >= 2.6 since a lot of interfaces in /sys/dev/block/ is relied upon.
+	 * Other fs utils written in pre-2.6 had to make a lot of "juggling" to figure out the
+	 * characteristics of the target block device. As exFAT is developed in 2010's, we can enjoy
+	 * the luxury of the relatively recent sysfs interfaces at our disposal.
+	 */
+	switch (exfat_cmp_kernel_ver(MIN_KERNEL_VER)) {
+	case -1:
+		exfat_err("failed to get kernel version.\n");
+		return -1;
+	case 1:
+		exfat_err("pre-2.6 kernel version not supported\n");
+		return -1;
+	}
 
 	fd = open(ui->dev_name, ui->writeable ? O_RDWR|O_EXCL : O_RDONLY);
 	if (fd < 0) {
