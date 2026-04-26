@@ -71,7 +71,6 @@ enum {
 
 struct exfat_blk_dev {
 	int dev_fd;
-	int verify_fd;
 	unsigned long long offset;
 	unsigned long long size;
 	unsigned int sector_size;

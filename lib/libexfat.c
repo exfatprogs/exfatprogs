@@ -292,16 +292,6 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 
 	ret = 0;
 	bd->dev_fd = fd;
-
-	if (ui->verify) {
-		bd->verify_fd = open(ui->dev_name, O_RDONLY|O_DIRECT);
-		if (bd->verify_fd < 0) {
-			exfat_err("open %s O_DIRECT failed:%s\n", ui->dev_name,
-				strerror(errno));
-			close(fd);
-			ret = -1;
-		}
-	}
 out:
 	return ret;
 }
@@ -916,6 +906,7 @@ int exfat_check_written_data(struct exfat_blk_dev *bd,
 	const void *zm = NULL;
 	bool zmapped = false;
 	int ret = 0;
+	int flags;
 
 	assert(sector > 0);
 
@@ -925,6 +916,8 @@ int exfat_check_written_data(struct exfat_blk_dev *bd,
 	ret = fsync(bd->dev_fd);
 	if (ret)
 		return ret;
+
+	flags = fcntl(bd->dev_fd, F_GETFL);
 
 	off_t aligned_off = off & ~((off_t)sector - 1); /* this is evil */
 	off_t head = off - aligned_off;
@@ -947,7 +940,8 @@ int exfat_check_written_data(struct exfat_blk_dev *bd,
 		buf = zm;
 	}
 
-	ret = exfat_read2(bd->verify_fd, verify, &aligned_len, &aligned_off);
+	fcntl(bd->dev_fd, F_SETFL, flags|O_DIRECT);
+	ret = exfat_read2(bd->dev_fd, verify, &aligned_len, &aligned_off);
 	if (ret) {
 		exfat_debug("%s verify read failed (off=%llu, len=%llu)\n", what,
 				(unsigned long long)aligned_off,
@@ -966,6 +960,8 @@ int exfat_check_written_data(struct exfat_blk_dev *bd,
 out:
 	free(verify);
 	exfat_unmap_mm(zm, len, &zmapped);
+	fcntl(bd->dev_fd, F_SETFL, flags);
+
 	return ret;
 }
 
