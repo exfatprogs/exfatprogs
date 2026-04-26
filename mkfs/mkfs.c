@@ -1163,8 +1163,6 @@ int main(int argc, char *argv[])
 	ret = fsync(bd.dev_fd);
 close:
 	close(bd.dev_fd);
-	if (ui.verify)
-		close(bd.verify_fd);
 out:
 	exfat_free_upcase(&ui);
 	exfat_close_fd_devzero();
