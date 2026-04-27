@@ -11,6 +11,7 @@ on:
     - exfat-next
 
 env:
+  TEST_PART_TYPES: mbr gpt
 # FIXME
 #
 # As of writing of this, qemu-img does not support VHDX images whose block size
@@ -18,7 +19,7 @@ env:
 # 4096-BS VHDX
   TEST_BLOCKSIZES: 512
   # As of writing, the largest HDD on the market was 36TB
-  TEST_VOLUMESIZES: 7M 256M 32G 512G 1T 2T 4T 8T 16T 32T 64T
+  TEST_VOLUMESIZES: 7M 256M 3G 4G 5G 7G 32G 512G 1T 2T 3T 4T 6T 8T 16T 32T 44T 64T
   TEST_MAGIC: dd01aeee-bab0-babe-babe-deadcafebeef
 
 jobs:
@@ -90,7 +91,7 @@ jobs:
         sudo mkdir -p /mnt/test
         truncate -s 10G test.img
         sudo losetup /dev/loop22 test.img
-        sudo ${{ matrix.run }} ./mkfs/mkfs.exfat /dev/loop22
+        sudo ${{ matrix.run }} ./mkfs/mkfs.exfat -vfC /dev/loop22
         sudo mount -t exfat /dev/loop22 /mnt/test/
         pushd /mnt/test/
         cat << EOF | sudo bash
@@ -125,14 +126,16 @@ jobs:
         sudo umount /mnt/test/
         sudo ${{ matrix.run }} ./fsck/fsck.exfat /dev/loop22
         sudo losetup -d /dev/loop22
+        rm -f test.img
 
-    - name: generate large sparse images for Windows runners
+    - name: generate large images for Windows runners
       shell: bash
       id: images
       run: |
         set -e
 
         EXFAT_MKFS="$(realpath ./mkfs/mkfs.exfat)"
+        EXFAT_FSCK="$(realpath ./fsck/fsck.exfat)"
         EXFAT_DUMP="$(realpath ./dump/dump.exfat)"
 
         # cd to tmp dir as the rootfs the runner is running in might not support LFS
@@ -146,39 +149,76 @@ jobs:
           exit 1
         fi
 
-        mkdir "images-${{ matrix.name }}"
-        for bs in $TEST_BLOCKSIZES
+        mkdir "images-${{ matrix.name }}" && pushd "images-${{ matrix.name }}"
+        for pt in $TEST_PART_TYPES
         do
-          mkdir "images-${{ matrix.name }}/$bs"
+          mkdir "$pt" && pushd "$pt"
 
-          for vs in $TEST_VOLUMESIZES
+          for bs in $TEST_BLOCKSIZES
           do
-            img_a="images-${{ matrix.name }}/$bs/exfat-$vs.img"
-            img_b="images-${{ matrix.name }}/$bs/exfat-$vs.vhdx"
+            mkdir "$bs" && pushd "$bs"
 
-            # fill the first 2MB with random data to see if mkfs.exfat leaves
-            # any garbage that confuses EXFAT.sys driver
-            dd iflag=fullblock if=/dev/urandom bs=2M count=1 of="$img_a" conv=notrunc status=none
+            for vs in $TEST_VOLUMESIZES
+            do
+              img_a="exfat-$vs.img"
+              img_b="exfat-$vs.vhdx"
 
-            # truncate up to the volume size
-            truncate -s "$vs" "$img_a"
+              # fill the first 2MB with random data to see if mkfs.exfat leaves
+              # any garbage that confuses EXFAT.sys driver
+              dd iflag=fullblock if=/dev/urandom bs=2M count=1 of="$img_a" conv=notrunc status=none
 
-            sudo losetup -Pb "$bs" /dev/loop22 "$img_a"
-            sudo parted -s /dev/loop22 mkt gpt mkp fs fat32 1M 100%
-            sudo ${{ matrix.run }} "$EXFAT_MKFS" /dev/loop22p1
+              # truncate up to the volume size
+              truncate -s "$vs" "$img_a"
+              img_size="$(stat -c '%s' "$img_a")"
+              if [ "$pt" == "mbr" ] && [ "$img_size" -ge 2199023255552 ]
+              then
+                expected=false
+              else
+                expected=true
+              fi
+              echo "========== $pt $img_size expected to succeed: $expected =========="
 
-            sudo mount -t exfat /dev/loop22p1 /mnt/test/
-            sudo mkdir /mnt/test/a
-            echo "$TEST_MAGIC" | sudo tee /mnt/test/a/b > /dev/null
-            sudo umount /mnt/test/
+              sudo losetup -Pb "$bs" /dev/loop22 "$img_a"
+              sudo blockdev --report /dev/loop22
+              if sudo ${{ matrix.run }} "$EXFAT_MKFS" -vP$pt /dev/loop22
+              then
+                if ! "$expected"
+                then
+                  # MBR created on 2TiB or larger. This shouldn't happen.
+                  echo "MBR created on $img_size bytes device" >&2
+                  exit 1
+                fi
+              elif ! "$expected"
+              then
+                sudo losetup -d /dev/loop22
+                rm -f "$img_a"
+                continue
+              else
+                exit 1
+              fi
 
-            sudo ${{ matrix.run }} "$EXFAT_DUMP" /dev/loop22p1 | grep -iE 'Bytes per Sector:(\s+)?'"$bs" > /dev/null
-            sudo losetup -d /dev/loop22
+              sudo ${{ matrix.run }} "$EXFAT_MKFS" -CP$pt /dev/loop22
+              sudo blockdev --report /dev/loop22*
 
-            qemu-img convert -f raw -O vhdx "$img_a" "$img_b"
-            rm -f "$img_a"
+              sudo ${{ matrix.run }} "$EXFAT_FSCK" /dev/loop22p1
+
+              sudo mount -t exfat /dev/loop22p1 /mnt/test/
+              sudo mkdir /mnt/test/a
+              echo "$TEST_MAGIC" | sudo tee /mnt/test/a/b > /dev/null
+              sudo umount /mnt/test/
+
+              sudo ${{ matrix.run }} "$EXFAT_FSCK" /dev/loop22p1
+              sudo ${{ matrix.run }} "$EXFAT_DUMP" /dev/loop22p1 | grep -iE 'Bytes per Sector:(\s+)?'"$bs" > /dev/null
+              sudo losetup -d /dev/loop22
+
+              qemu-img convert -f raw -O vhdx "$img_a" "$img_b"
+              rm -f "$img_a"
+            done
+            popd
           done
+          popd
         done
+        popd
 
         tar -cf "images-${{ matrix.name }}.tar" "images-${{ matrix.name }}"
         TAR_FILE="$(realpath "images-${{ matrix.name }}.tar")"
@@ -210,22 +250,21 @@ jobs:
 
         tar -C /c -xf images-${{ matrix.name }}.tar
 
-        for bs in $TEST_BLOCKSIZES
+        for img in "/c/images-${{ matrix.name }}"/*/*/*.vhdx
         do
-          for vs in $TEST_VOLUMESIZES
-          do
-            img="images-${{ matrix.name }}\\$bs\\exfat-$vs.vhdx"
+          img="$(echo "$img" | tr '/' '\\')"
+          img="C:\\${img:3}"
 
-            # mount the image and get the disk number assigned by the kernel
-            disknum=$(powershell "Mount-DiskImage \"C:\\$img\" | Select-Object -ExpandProperty Number")
-            # assign it drive letter X
-            powershell "Get-Partition -DiskNumber $disknum -PartitionNumber 1 | Set-Partition -NewDriveLetter X"
-            powershell "Get-DiskImage \"C:\\$img\""
+          # mount the image and get the disk number assigned by the kernel
+          disknum=$(powershell "Mount-DiskImage \"$img\" | Select-Object -ExpandProperty Number")
+          # assign it drive letter X
+          powershell "Get-Partition -DiskNumber $disknum -PartitionNumber 1 | Set-Partition -NewDriveLetter X"
+          powershell "Get-DiskImage \"$img\""
 
-            # simple sanity check
-            grep "$TEST_MAGIC" /x/a/b > /dev/null
+          # simple sanity check
+          powershell 'chkdsk X: /f'
+          grep "$TEST_MAGIC" /x/a/b > /dev/null
 
-            # unmount the image
-            powershell "Dismount-DiskImage \"C:\\$img\"" > /dev/null
-          done
+          # unmount the image
+          powershell "Dismount-DiskImage \"$img\"" > /dev/null
         done
