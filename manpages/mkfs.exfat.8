@@ -159,10 +159,10 @@ no effect, and the bitmap will be aligned at the boundary as by default.
 .TP
 .B \-\-upcase=\fIfile\fR
 Format the volume with the specified up-case table file in binary format. No
-additional conversion or validation of the file is done by mkfs.exfat and the
-binary contents of the file is written to the volume as-is. This is useful for
-testing and debugging exFAT file system drivers. The scripts and example up-case
-tables useful for this option are located in \fI/usr/libexec\fR and
+additional conversion or validation of the file is done by \fBmkfs.exfat\fR and
+the binary contents of the file is written to the volume as-is. This is useful
+for testing and debugging exFAT file system drivers. The scripts and example
+up-case tables useful for this option are located in \fI/usr/libexec\fR and
 \fI/usr/share/doc/exfatprogs\fR.
 .TP
 .BR \-q ", " \-\-quiet
@@ -176,3 +176,4 @@ Prints the version number and exits.
 .SH SEE ALSO
 .BR mkfs (8),
 .BR mount (8),
+.BR mkfs.fat (8)
