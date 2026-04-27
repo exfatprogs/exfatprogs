@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 	int c;
 	int ret = EXIT_FAILURE;
 	unsigned long volume_serial;
-	struct exfat_blk_dev bd;
+	struct exfat_blk_dev bd = { 0, };
 	struct exfat_user_input ui;
 	bool version_only = false;
 	int flags = 0;
