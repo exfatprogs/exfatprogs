@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
 {
 	int c;
 	int ret = EXIT_FAILURE;
-	struct exfat_blk_dev bd;
+	struct exfat_blk_dev bd = { 0, };
 	struct exfat_user_input ui;
 	bool version_only = false;
 	int serial_mode = 0;
