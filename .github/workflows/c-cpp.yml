@@ -19,10 +19,113 @@ env:
 # 4096-BS VHDX
   TEST_BLOCKSIZES: 512
   # As of writing, the largest HDD on the market was 36TB
-  TEST_VOLUMESIZES: 7M 256M 3G 4G 5G 7G 32G 512G 1T 2T 3T 4T 6T 8T 16T 32T 44T 64T
+  TEST_VOLUMESIZES: |
+    7M 128M 256M 512M
+    2G 3G 4G 5G 7G 32G 64G 128G 256G 512G
+    1T 2T 3T 4T 6T 8T 16T 32T 44T 64T
   TEST_MAGIC: dd01aeee-bab0-babe-babe-deadcafebeef
 
 jobs:
+  memcheck:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [clang, gcc]
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install packages
+      run: |
+        sudo apt-get --update --quiet --yes install \
+             linux-headers-$(uname -r) xz-utils \
+             valgrind ${{ matrix.cc }}
+        sudo apt-get install -y linux-modules-extra-$(uname -r)
+    - name: Build
+      run: |
+        export "CC=${{ matrix.cc }}"
+        ./autogen.sh && ./configure
+        make -j "$(nproc)"
+        sudo make install
+    - name: Run fsck with Valgrind
+      run: |
+        pushd tests
+        export FSCK1="valgrind --error-exitcode=1 ../fsck/fsck.exfat"
+        export FSCK2="valgrind --error-exitcode=1 ../fsck/fsck.exfat"
+        sudo -E ./test_fsck.sh
+        popd
+    - name: Run the rest with Valgrind
+      shell: bash
+      run: |
+        set -e
+
+        EXFAT_MKFS="$(realpath ./mkfs/mkfs.exfat)"
+        EXFAT_FSCK="$(realpath ./fsck/fsck.exfat)"
+        EXFAT_DUMP="$(realpath ./dump/dump.exfat)"
+
+        # cd to tmp dir as the rootfs the runner is running in might not support LFS
+        pushd "$(mktemp -d -p /dev/shm)"
+        TMP_DIR="$(pwd)"
+        CWD_FSTYPE="$(stat -fc '%T' .)"
+
+        # assert that cwd is indeed tmpfs
+        if [ "$CWD_FSTYPE" != "tmpfs" ]
+        then
+          echo "FSTYPE of temp dir: ${CWD_FSTYPE}!" >&2
+          exit 1
+        fi
+
+        for pt in none mbr gpt
+        do
+          for bs in 512 4096
+          do
+            for vs in $TEST_VOLUMESIZES
+            do
+              echo "========== $pt $bs $vs =========="
+              truncate -s 0 img && truncate -s "$vs" img
+              img_size="$(stat -c '%s' img)"
+
+              if [ "$bs" -gt 512 ] && [ "$img_size" -lt 134217728 ]
+              then
+                continue
+              fi
+
+              sudo losetup -Pb "$bs" /dev/loop22 img
+
+              if [ "$pt" == "mbr" ] && [ "$img_size" -ge 2199023255552 ]
+              then
+                set +e
+                sudo valgrind --error-exitcode=32 "$EXFAT_MKFS" "-fP$pt" /dev/loop22
+                [ $? -eq 32 ] && exit 1 || true
+                sudo valgrind --error-exitcode=32 "$EXFAT_MKFS" "-fCP$pt" /dev/loop22
+                [ $? -eq 32 ] && exit 1 || true
+                set -e
+              else
+                if [ "$img_size" -le 536870912 ]
+                then
+                  sudo valgrind --error-exitcode=1 "$EXFAT_MKFS" "-fP$pt" /dev/loop22
+                  sudo valgrind --error-exitcode=1 "$EXFAT_MKFS" "-fCP$pt" /dev/loop22
+                fi
+                sudo valgrind --error-exitcode=1 "$EXFAT_MKFS" "-P$pt" /dev/loop22
+                sudo valgrind --error-exitcode=1 "$EXFAT_MKFS" "-CP$pt" /dev/loop22
+
+                if [ "$pt" == none ]
+                then
+                  loop=/dev/loop22
+                else
+                  loop=/dev/loop22p1
+                fi
+
+                sudo valgrind --error-exitcode=1 "$EXFAT_DUMP" "$loop"
+                sudo valgrind --error-exitcode=1 "$EXFAT_FSCK" "$loop"
+              fi
+
+              sudo losetup -d /dev/loop22
+            done
+          done
+        done
+
+        popd
+        rm -rf "$TMP_DIR"
   tests:
     runs-on: ubuntu-latest
     strategy:
@@ -64,11 +167,13 @@ jobs:
         CONFIG_SCRIPT="$(realpath ./configure)"
 
         pushd "$(mktemp -d)"
+        BUILD_DIR="$(pwd)"
         "${CONFIG_SCRIPT}"
         make -j$((`nproc`+1))
         sudo make install
-        make distclean
         popd
+
+        rm -rf "$BUILD_DIR"
     - name: Build exfatprogs for test target
       run: |
         ./configure --host=${{ matrix.host }} CFLAGS=--static
