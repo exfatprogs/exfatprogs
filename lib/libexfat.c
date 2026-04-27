@@ -16,6 +16,7 @@
 #include <sys/mman.h>
 #endif
 #include <sys/utsname.h>
+#include <dirent.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -32,6 +33,39 @@
 
 unsigned int print_level  = EXFAT_INFO;
 static int fd_devzero = -1;
+
+const char *exfat_part_table_type_str[] = {
+	"none",
+	"MBR",
+	"GPT",
+};
+
+/* Copied from dosfstools */
+const char *dummy_bootcode =
+	"\x0e"			/* push cs */
+	"\x1f"			/* pop ds */
+	"\xbe\x00\x00"		/* mov si, offset message_txt (to be filled later) */
+/* write_msg: */
+	"\xac"			/* lodsb */
+	"\x22\xc0"		/* and al, al */
+	"\x74\x0b"		/* jz key_press */
+	"\x56"			/* push si */
+	"\xb4\x0e"		/* mov ah, 0eh */
+	"\xbb\x07\x00"		/* mov bx, 0007h */
+	"\xcd\x10"		/* int 10h */
+	"\x5e"			/* pop si */
+	"\xeb\xf0"		/* jmp write_msg */
+/* key_press: */
+	"\x32\xe4"		/* xor ah, ah */
+	"\xcd\x16"		/* int 16h */
+	"\xcd\x19"		/* int 19h */
+	"\xeb\xfe";		/* foo: jmp foo */
+/* message_txt: */
+#define DEFAULT_DUMMY_BOOTCODE_MSG \
+	"This exFAT/GPT volume is not bootable.\r\n"\
+	"Please insert a bootable disk and press any key to try again.\r\n"
+const char *dummy_bootcode_msg = DEFAULT_DUMMY_BOOTCODE_MSG;
+/* static_assert(sizeof(DEFAULT_DUMMY_BOOTCODE_MSG) - 1 <= EXFAT_MAX_BOOTCODE_MSGLEN); */
 
 void exfat_bitmap_set_range(struct exfat *exfat, unsigned char *bitmap,
 			    clus_t start_clus, clus_t count)
@@ -146,18 +180,125 @@ void init_user_input(struct exfat_user_input *ui)
 	ui->writeable = true;
 	ui->quick = true;
 	ui->discard = true;
+	ui->part_table = PART_TABLE_AUTO;
+	ui->bootcode.msg = dummy_bootcode_msg;
+	ui->bootcode.len = sizeof(DEFAULT_DUMMY_BOOTCODE_MSG) - 1;
 }
 
-static size_t count_dots(const char *s)
+static size_t count_dots(const char *s, const size_t n)
 {
 	size_t ret = 0;
 
-	while (*s) {
-		if (*s == '.')
+	for (size_t i = 0; s[i] != 0 && i < n; i++)
+		if (s[i] == '.')
 			ret++;
-		s++;
+
+	return ret;
+}
+
+static FILE *exfat_fopenat_ro(const int at, const char *path)
+{
+	int fd;
+	FILE *ret;
+
+	fd = openat(at, path, O_RDONLY);
+	if (fd < 0)
+		return NULL;
+
+	ret = fdopen(fd, "r");
+	if (ret == NULL) {
+		close(fd);
+		return NULL;
 	}
 
+	return ret;
+}
+
+static DIR *exfat_opendirat(const int at, const char *path)
+{
+	int fd;
+	DIR *ret;
+
+	fd = openat(at, path, O_RDONLY|O_DIRECTORY);
+	if (fd < 0)
+		return NULL;
+
+	ret = fdopendir(fd);
+	if (ret == NULL) {
+		close(fd);
+		return NULL;
+	}
+
+	return ret;
+}
+
+/* Read an unsigned long long integer value from the text file */
+static bool exfat_read_textfile_ull(const int at, const char *path, unsigned long long *out)
+{
+	bool ret = false;
+	FILE *fp;
+
+	fp = exfat_fopenat_ro(at, path);
+	if (fp == NULL)
+		return false;
+
+	ret = fscanf(fp, "%llu", out) == 1;
+	fclose(fp);
+
+	if (!ret)
+		errno = EINVAL;
+
+	return ret;
+}
+
+static bool exfat_is_file_symlink(const int at, const char *path)
+{
+	struct stat st;
+
+	return fstatat(at, path, &st, AT_SYMLINK_NOFOLLOW) == 0 &&
+		S_ISLNK(st.st_mode) != 0;
+}
+
+/*
+ * The function is used to traverse sysfs only, so errors are not handled.
+ * If the function should be repurposed, definitely handle errors as VFS
+ * can throw EIO at your face at any given moment!
+ *
+ * (POSIX not addressing this can be considered the defect in the spec
+ * itself)
+ */
+static bool exfat_dir_has_child(const int at, const char *path)
+{
+	const struct dirent *ent;
+	bool ret = false;
+	DIR *dir;
+
+	dir = exfat_opendirat(at, path);
+	if (dir == NULL)
+		return false;
+
+	while ((ent = readdir(dir)) != NULL) {
+		/* Skip dots */
+		switch (count_dots(ent->d_name, 2)) {
+		case 1:
+			if (ent->d_name[0] == '.' && ent->d_name[1] == 0)
+				/* "." */
+				continue;
+			/* "X." ".X" */
+			break;
+		case 2:
+			if (ent->d_name[2] == 0)
+				/* ".." */
+				continue;
+			/* "..XXX" */
+			break;
+		}
+
+		ret = true;
+		break;
+	}
+
+	closedir(dir);
 	return ret;
 }
 
@@ -172,7 +313,7 @@ static int exfat_cmp_kernel_ver(const unsigned short *req)
 	if (ret)
 		return -1;
 
-	switch (count_dots(uts.release)) {
+	switch (count_dots(uts.release, 65)) {
 	case 0:
 		ret = sscanf(uts.release, "%hu", v) != 1;
 		break;
@@ -203,6 +344,7 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		struct exfat_blk_dev *bd)
 {
 	static const unsigned short MIN_KERNEL_VER[3] = { 2, 6, 0 };
+	char *pathname = NULL;
 	int fd, ret = -1;
 	off_t blk_dev_size;
 	struct stat st;
@@ -222,39 +364,98 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		return -1;
 	}
 
+	/*
+	 * Neat trick: the extra one character is for causing open() to
+	 * ENAMETOOLONG on (strlen(pathname) >= PATH_MAX)
+	 */
+	pathname = calloc(PATH_MAX + 1, 1);
+	if (pathname == NULL) {
+		exfat_err("Cannot allocate path string: out of memory\n");
+		return -1;
+	}
+
 	fd = open(ui->dev_name, ui->writeable ? O_RDWR|O_EXCL : O_RDONLY);
 	if (fd < 0) {
 		exfat_err("open failed : %s, %s\n", ui->dev_name,
 			strerror(errno));
-		return -1;
+		goto out;
 	}
+
 	blk_dev_size = lseek(fd, 0, SEEK_END);
 	if (blk_dev_size <= 0) {
 		exfat_err("invalid block device size(%s)\n",
 			ui->dev_name);
-		ret = blk_dev_size;
-		close(fd);
 		goto out;
 	}
 
 	if (fstat(fd, &st) == 0 && S_ISBLK(st.st_mode)) {
-		char pathname[sizeof("/sys/dev/block/4294967295:4294967295/start")];
-		FILE *fp;
+		unsigned long long v;
+		int dirfd;
 
 		bd->isblk = true;
 
-		snprintf(pathname, sizeof(pathname), "/sys/dev/block/%u:%u/start",
-			major(st.st_rdev), minor(st.st_rdev));
-		fp = fopen(pathname, "r");
-		if (fp != NULL) {
-			if (fscanf(fp, "%llu", &blk_dev_offset) == 1) {
+		/*
+		 * Open and hold the dir to avoid the TOCTOU condition where the
+		 * device goes away mid-op. O_EXCL should prevent this, but
+		 * the blockdev is not opened with that flag in read-only mode.
+		 */
+		snprintf(pathname, PATH_MAX + 1, "/sys/dev/block/%u:%u/",
+			 major(st.st_rdev), minor(st.st_rdev));
+		dirfd = open(pathname, O_RDONLY|O_DIRECTORY);
+		if (dirfd >= 0) {
+			if (exfat_read_textfile_ull(dirfd, "start", &blk_dev_offset))
 				/*
 				 * Linux kernel always reports partition offset
 				 * in 512-byte units, regardless of sector size
 				 */
 				blk_dev_offset <<= 9;
-			}
-			fclose(fp);
+
+			if (exfat_read_textfile_ull(dirfd, "partition", &v) && v != 0)
+				bd->ispart = true;
+
+			/*
+			 * Problems with the prior art, get_block_linux_info() in dosfstools:
+			 *
+			 *  - What a mess!
+			 *  - The project is licenced GPLv2 whilst exfatprogs is GPLv3'd
+			 *  - It's based on the assumption that only dm(device mapper) and loop are
+			 *    the only "virtual" types whilst a new type of "virtual" blockdev can
+			 *    be added to the kernel. Not so future proof
+			 *
+			 * So, we really shouldn't just copy and paste that code into exfatprogs'
+			 * codebase.
+			 *
+			 * Our approach is to assume a block dev without a 'device' symlink is
+			 * "virtual"(example at the end of this comment block). This feature has
+			 * existed since pre-2.6, so we can safely rely on it:
+			 *
+			 * https://git.kernel.org/pub/scm/linux/kernel/git/tglx/history.git/tree/drivers/base/class.c#n429
+			 *
+			 * Example scan command for your comprehension:
+			 */
+			// find /sys/dev/block/*/ -regextype egrep -regex '.*/(subsystem|device)' -printf '%p: %l\n' | sort
+			bd->isdev = exfat_is_file_symlink(dirfd, "device");
+			/*
+			 * Grandfather clause from dosfstools: just to be absolutely sure, overturn
+			 * the ruling if the device turns out to have any child
+			 *
+			 * This is not wrapped around an if statement so that the code path won't be
+			 * optimised out therefore always be tested.
+			 */
+			bd->isdev &= !exfat_dir_has_child(dirfd, "slaves");
+
+			/*
+			 * Note that this attribute is what the device advertise itself as through
+			 * the underlying transport interface. It has nothing to do with the fact
+			 * that the device is actually removable or not. For example, it can be 0
+			 * for mmcblk.
+			 */
+			if (exfat_read_textfile_ull(dirfd, "removable", &v) && v != 0)
+				bd->isremov = true;
+
+			exfat_read_textfile_ull(dirfd, "alignment_offset", &bd->alignment_offset);
+
+			close(dirfd);
 		}
 	}
 
@@ -281,18 +482,25 @@ int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 	bd->num_sectors = blk_dev_size / bd->sector_size;
 	bd->num_clusters = blk_dev_size / ui->cluster_size;
 
-	exfat_debug("Block device name : %s\n", ui->dev_name);
-	exfat_debug("Block device offset : %llu\n", bd->offset);
-	exfat_debug("Block device size : %llu\n", bd->size);
-	exfat_debug("Block sector size : %u\n", bd->sector_size);
-	exfat_debug("Number of the sectors : %llu\n",
-		bd->num_sectors);
-	exfat_debug("Number of the clusters : %u\n",
-		bd->num_clusters);
+	exfat_debug("Block device name      : %s\n",   ui->dev_name);
+	exfat_debug("Block device offset    : %llu\n", bd->offset);
+	exfat_debug("Block device size      : %llu\n", bd->size);
+	exfat_debug("Block sector size      : %u\n",   bd->sector_size);
+	exfat_debug("Number of the sectors  : %llu\n", bd->num_sectors);
+	exfat_debug("Number of the clusters : %u\n",   bd->num_clusters);
+	exfat_debug("Is block device        : %d\n",   bd->isblk);
+	exfat_debug("Is partition           : %d\n",   bd->ispart);
+	exfat_debug("Is real device         : %d\n",   bd->isdev);
+	exfat_debug("Is removable           : %d\n",   bd->isremov);
 
 	ret = 0;
 	bd->dev_fd = fd;
+	fd = -1;
 out:
+	free(pathname);
+	if (fd >= 0)
+		close(fd);
+
 	return ret;
 }
 
@@ -1095,13 +1303,14 @@ int exfat_write_sector(struct exfat_blk_dev *bd, void *buf, unsigned long long s
 }
 
 int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
-		struct exfat_user_input *ui, unsigned int checksum,
-		bool is_backup)
+	struct exfat_user_input *ui, unsigned long long sec_off,
+	unsigned int checksum, bool is_backup)
 {
 	__le32 *checksum_buf;
 	int ret = 0;
 	unsigned int i;
-	unsigned int sec_idx = CHECKSUM_SEC_IDX;
+
+	sec_off += CHECKSUM_SEC_IDX;
 
 	checksum_buf = malloc(bd->sector_size);
 	if (!checksum_buf) {
@@ -1110,12 +1319,12 @@ int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
 	}
 
 	if (is_backup)
-		sec_idx += BACKUP_BOOT_SEC_IDX;
+		sec_off += BACKUP_BOOT_SEC_IDX;
 
 	for (i = 0; i < bd->sector_size / sizeof(int); i++)
 		checksum_buf[i] = cpu_to_le32(checksum);
 
-	ret = exfat_write_sector(bd, checksum_buf, sec_idx);
+	ret = exfat_write_sector(bd, checksum_buf, sec_off);
 	if (ret) {
 		exfat_err("checksum sector write failed\n");
 		goto free;
@@ -1124,7 +1333,7 @@ int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
 	if (ui && ui->verify) {
 		ret = exfat_check_written_data(bd,
 				checksum_buf, bd->sector_size,
-				sec_idx * bd->sector_size,
+				sec_off * bd->sector_size,
 				"checksum sector");
 		if (ret) {
 			exfat_err("checksum sector verification failed (read-back mismatch)\n");
@@ -1201,7 +1410,7 @@ static int exfat_update_boot_checksum(struct exfat_blk_dev *bd,
 			&checksum);
 	}
 
-	ret = exfat_write_checksum_sector(bd, ui, checksum, is_backup);
+	ret = exfat_write_checksum_sector(bd, ui, 0, checksum, is_backup);
 
 free_buf:
 	free(buf);

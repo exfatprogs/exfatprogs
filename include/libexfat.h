@@ -15,6 +15,7 @@ typedef __u32 clus_t;
 #define KB			(1024)
 #define MB			(1024*1024)
 #define GB			(1024UL*1024UL*1024UL)
+#define TB			(1024ULL*1024ULL*1024ULL*1024ULL)
 
 #define __round_mask(x, y) ((__typeof__(x))((y)-1))
 #define round_up(x, y) ((((x)-1) | __round_mask(x, y))+1)
@@ -59,6 +60,11 @@ typedef __u32 clus_t;
 #define EXFAT_MAX_UPCASE_CHARS		(0x10000)
 #define EXFAT_MAX_UPCASE_TABLE_SIZE	(EXFAT_MAX_UPCASE_CHARS * sizeof(__u16))
 
+#define EXFAT_MBR_PART_TYPE	(0x07) /* same as HPFS/NTFS */
+/* Encoded in MS's mixed endianness (first 32, 16, 16 LE, the rest BE) */
+#define EXFAT_GPT_PART_TYPE	"\xA2\xA0\xD0\xEB""\xE5\xB9""\x33\x44""\x87\xC0""\x68\xB6\xB7\x26\x99\xC7"
+/* #define EXFAT_GPT_PART_TYPE	"\xEB\xD0\xA0\xA2""\xB9\xE5""\x44\x33""\x87\xC0""\x68\xB6\xB7\x26\x99\xC7" */
+
 enum {
 	BOOT_SEC_IDX = 0,
 	EXBOOT_SEC_IDX,
@@ -72,6 +78,7 @@ enum {
 struct exfat_blk_dev {
 	int dev_fd;
 	unsigned long long offset;
+	unsigned long long alignment_offset;
 	unsigned long long size;
 	unsigned int sector_size;
 	unsigned int sector_size_bits;
@@ -79,8 +86,42 @@ struct exfat_blk_dev {
 	unsigned int num_clusters;
 	unsigned int cluster_size;
 	unsigned int dev_sector_size;
-	bool isblk;
+	/* is the target a block device in /sys/dev/block? */
+	bool isblk:1;
+	/* is the target a partition in a block device? */
+	bool ispart:1;
+	/*
+	 * is the target a block device directly associated with a real device
+	 * (has "device" symlink in /sys/dev/block/MAJ:MIN/)?
+	 */
+	bool isdev:1;
+	/*
+	 * is the target device advertising itself as a "removable" device
+	 * through the underlying interface?
+	 */
+	bool isremov:1;
 };
+
+enum exfat_part_table_type {
+	PART_TABLE_AUTO = -1,
+	PART_TABLE_NONE,
+	PART_TABLE_MBR,
+	PART_TABLE_GPT,
+};
+
+extern const char *exfat_part_table_type_str[];
+
+#define EXFAT_DUMMY_BOOTCODE_SIZE (29)
+extern const char *dummy_bootcode;
+/*
+ * Out of 390 bytes in BootCode field, take the length of the x86 code, one byte
+ * for a null-terminator, and 70 bytes for the MBR disk signature and partition
+ * entries(6 + 16 * 4).
+ */
+#define EXFAT_MAX_BOOTCODE_MSGLEN (390 - EXFAT_DUMMY_BOOTCODE_SIZE - 1 - 70)
+/* static_assert(EXFAT_MAX_BOOTCODE_MSGLEN > 0); */
+extern const char *dummy_bootcode_msg;
+#define EXFAT_BOOTCODE_MSG_JMP_OFFSET (3)
 
 struct exfat_user_input {
 	const char *dev_name;
@@ -106,6 +147,13 @@ struct exfat_user_input {
 		size_t len;
 		void (*free)(struct exfat_user_input *ui);
 	} upcase;
+
+	struct {
+		const char *msg;
+		size_t len;
+	} bootcode;
+
+	enum exfat_part_table_type part_table;
 };
 
 /* Returns true if the option used or the option argument is not an empty string */
@@ -228,8 +276,8 @@ int exfat_set_volume_guid(struct exfat *exfat, const char *guid);
 int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned long long sec_off);
 int exfat_write_sector(struct exfat_blk_dev *bd, void *buf, unsigned long long sec_off);
 int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
-	struct exfat_user_input *ui, unsigned int checksum,
-	bool is_backup);
+	struct exfat_user_input *ui, unsigned long long sec_off,
+	unsigned int checksum, bool is_backup);
 char *exfat_conv_volume_label(struct exfat_dentry *vol_entry);
 int exfat_show_volume_serial(int fd);
 int exfat_set_volume_serial(struct exfat_blk_dev *bd,

@@ -22,19 +22,20 @@ int exfat_create_upcase_table(struct exfat_blk_dev *bd,
 
 	assert(finfo.root_byte_off >= finfo.ut_byte_off);
 
-	if (!exfat_write_full(bd->dev_fd, ui->upcase.table, ui->upcase.len, finfo.ut_byte_off))
+	if (!exfat_write_full(bd->dev_fd, ui->upcase.table, ui->upcase.len,
+			finfo.target.byte.ofs + finfo.ut_byte_off))
 		return -1;
 	if (ui->verify) {
 		ret = exfat_check_written_data(bd,
 					       ui->upcase.table,
 					       ui->upcase.len,
-					       finfo.ut_byte_off,
+					       finfo.target.byte.ofs + finfo.ut_byte_off,
 					       "upcase table");
 		if (ret)
 			goto verify_failed;
 	}
 
-	zero_ofs = finfo.ut_byte_off + ui->upcase.len;
+	zero_ofs = finfo.target.byte.ofs + finfo.ut_byte_off + ui->upcase.len;
 	zero_len = finfo.root_byte_off - finfo.ut_byte_off - ui->upcase.len;
 	ret = exfat_write_zero(bd->dev_fd, zero_len, zero_ofs);
 	if (ret)
