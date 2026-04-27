@@ -1012,26 +1012,29 @@ int exfat_unmap_mm(const void *m, const size_t len, bool *mapped)
 	return 0;
 }
 
-int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned int sec_off)
+int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned long long sec_off)
 {
-	unsigned long long offset =
-		(unsigned long long)sec_off * bd->sector_size;
+	const unsigned long long offset = sec_off * bd->sector_size;
+
+	/* integer overflow check */
+	assert(bd->sector_size < UINT_MAX);
 
 	if (!exfat_read_full(bd->dev_fd, buf, bd->sector_size, offset)) {
-		exfat_err("read failed, sec_off : %u\n", sec_off);
+		exfat_err("read failed, sec_off : %llu\n", sec_off);
 		return -1;
 	}
 	return 0;
 }
 
-int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
-		unsigned int sec_off)
+int exfat_write_sector(struct exfat_blk_dev *bd, void *buf, unsigned long long sec_off)
 {
-	unsigned long long offset =
-		(unsigned long long)sec_off * bd->sector_size;
+	const unsigned long long offset = sec_off * bd->sector_size;
+
+	/* integer overflow check */
+	assert(bd->sector_size < UINT_MAX);
 
 	if (!exfat_write_full(bd->dev_fd, buf, bd->sector_size, offset)) {
-		exfat_err("write failed, sec_off : %u\n", sec_off);
+		exfat_err("write failed, sec_off : %llu\n", sec_off);
 		return -1;
 	}
 	return 0;

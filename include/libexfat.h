@@ -226,10 +226,8 @@ int exfat_set_volume_label(struct exfat *exfat, char *label_input);
 int __exfat_set_volume_guid(struct exfat_dentry *dentry, const char *guid);
 int exfat_read_volume_guid(struct exfat *exfat);
 int exfat_set_volume_guid(struct exfat *exfat, const char *guid);
-int exfat_read_sector(struct exfat_blk_dev *bd, void *buf,
-		unsigned int sec_off);
-int exfat_write_sector(struct exfat_blk_dev *bd, void *buf,
-		unsigned int sec_off);
+int exfat_read_sector(struct exfat_blk_dev *bd, void *buf, unsigned long long sec_off);
+int exfat_write_sector(struct exfat_blk_dev *bd, void *buf, unsigned long long sec_off);
 int exfat_write_checksum_sector(struct exfat_blk_dev *bd,
 	struct exfat_user_input *ui, unsigned int checksum,
 	bool is_backup);
