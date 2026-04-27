@@ -26,6 +26,9 @@ mkfs.exfat \- create an exFAT filesystem
 .B \-U
 .I volume_guid
 ] [
+.B \-P
+.I type
+] [
 .B \-\-pack\-bitmap
 ] [
 .B \-\-upcase\fR=\fIfile\fR
@@ -56,7 +59,7 @@ SCSI disk, use:
 Specifies the alignment for the FAT and the start of the cluster heap.
 The \fIalignment\fR argument is specified in bytes or may be specified with
 \fBm\fR/\fBM\fR suffix for mebibytes or \fBk\fR/\fBK\fR suffix for kibibytes
-and should be a power of two.
+and must be a power of two.
 Some media like SD cards need this for optimal performance and endurance,
 in which case \fIalignment\fR should be set to half of the card's native
 boundary unit size.
@@ -115,6 +118,29 @@ This zeros the entire disk device while creating the exFAT filesystem.
 .TP
 .BR \-K ", " \-\-no\-discard
 Do not attempt to discard blocks.
+.TP
+.BR \-P ", " \-\-partition\-table =\fIauto\fP|\fInone\fP|\fImbr\fP|\fIgpt\fP
+Specifies the type of partition table to set up. If set to \fIauto\fR, which is
+the default, the characteristics of the underlying device will be detected to
+determine whether a partition table is required for Microsoft Windows systems to
+be able to recognise the new volume. If MBR is selected, \fBmkfs.exfat\fR will
+set up the volume with an MBR partition entry that covers the entire device
+including LBA 0 that contains the MBR itself. This is known as a recursive
+partition and is similar to what \fBmkfs.fat\fR creates when needed. If GPT is
+selected, \fBmkfs.exfat\fR creates regular GPT structures with one partition
+with all the available space allocated, and the new exFAT volume will be created
+on the partition. The partition will be aligned to the boundary unit specified
+with \fB\-b\fR option and must be at least 1 MiB.
+
+To override the default behaviour, set to \fInone\fR to disable partition table
+creation and set to \fImbr\fR or \fIgpt\fR to force \fBmkfs.exfat\fR to create
+MBR or GPT, respectively.
+.TP
+.BR \-\-bootcode\-msg =\fImessage\fR
+Specifies the message the x86 real mode MBR bootstrap program displays. If the
+message is not terminated with \\r\\n(CRLF) newline characters, the newline
+characters will be appended to the given message. Use \fBprintf\fR or \fBecho\fR
+command to escape newline characters from command line.
 .TP
 .BR \-C ", " \-\-verify\-written
 Verify filesystem metadata by reading it back after writing.
