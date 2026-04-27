@@ -1154,6 +1154,11 @@ int main(int argc, char *argv[])
 	if (ret)
 		goto close;
 
+	if (!quiet)
+		exfat_info("Filesystem UUID: %04X-%04X\n",
+			   (finfo.volume_serial & 0xFFFF0000) >> 16,
+			   (finfo.volume_serial & 0x0000FFFF));
+
 	exfat_info("Synchronizing...\n");
 	ret = fsync(bd.dev_fd);
 close:
