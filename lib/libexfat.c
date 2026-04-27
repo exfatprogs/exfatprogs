@@ -128,7 +128,9 @@ static inline unsigned int sector_size_bits(unsigned int size)
 static void exfat_set_default_cluster_size(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
-	if (256ULL * MB >= bd->size)
+	if (7ULL * MB > bd->size)
+		ui->cluster_size = 512;
+	else if (256ULL * MB >= bd->size)
 		ui->cluster_size = 4 * KB;
 	else if (32ULL * GB >= bd->size)
 		ui->cluster_size = 32 * KB;
