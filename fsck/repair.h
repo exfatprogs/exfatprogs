@@ -31,6 +31,8 @@
 #define ER_FILE_DUPLICATED_CLUS		0x00002006
 #define ER_FILE_ZERO_NOFAT		0x00002007
 #define ER_VENDOR_GUID			0x00003001
+#define ER_MBR_REQUIRED			0x00004001
+#define ER_MBR_CLEAR			0x00004002
 
 typedef unsigned int er_problem_code_t;
 struct exfat_fsck;

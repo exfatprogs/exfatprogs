@@ -68,7 +68,22 @@ Show progress bar while checking the filesystem. Cannot be used with -r option.
 Repair the filesystem interactively.
 .TP
 .BI \-s
-Create files in /LOST+FOUND for orphan clusters. These files have clusters allocated but not belonged to any files when reparing the filesystem. clusters unused and contiguous in bitmap are allocated to the same file.
+Create files in /LOST+FOUND for orphan clusters. These files have clusters allocated but not belonged to any files when repairing the filesystem. Clusters unused and contiguous in bitmap are allocated to the same file.
+.TP
+.BI \-\-put\-mbr
+If the volume needs to be on a partition for Microsoft Windows systems due to
+the characteristics of underlying device but there's no MBR partition entries in
+the boot region, attempt to amend this by creating a partition entry that covers
+the entire device, including LBA 0(main boot sector) itself. This option has no
+effect if the volume is already on a partition. This option cannot be combined
+with \fB\-b\fR option. Use \fB\-\-clear\-mbr\fR option to revert the process.
+.TP
+.BI \-\-clear\-mbr
+Remove all partition entries in the MBR. Use this option to scrub the partition
+table entry put with \fB\-\-put\-mbr\fR option. The exFAT volume signatures and
+checksums need to be valid for this operation to work. This option cannot be
+combined with \fB\-b\fR option and must be combined with \fB\-r\fR, \fB\-y\fR or
+\fB\-a\fR option.
 .TP
 .BI \-v
 Prints verbose debugging information while checking the exFAT filesystem.
@@ -82,12 +97,20 @@ Repair the filesystem answering yes to all questions.
 .B \-b
 Try to repair the filesystem even if the exFAT filesystem is not found.
 
+.SH NOTE
+\fBmkfs.exfat\fR version \fI1.3.2\fR and older created exFAT volumes with no MBR
+partition entry even when it was required for use with Microsoft Windows
+systems, leading to some compatibility issues. \fB\-\-put-mbr\fR option may be
+used to determine if the problem is due to the missing MBR partition entry and
+add it in attempt to fix the volume.
+
 .SH EXAMPLES
 .PP
-repair a corrupted device and create files in /LOST+FOUND, which have clusters allocated but not belonged to any files when reparing the device.
+repair a corrupted device and create files in /LOST+FOUND, which have clusters allocated but not belonged to any files when repairing the device.
 .EX
 .RB "$" " fsck.exfat -p -s /dev/sda1"
 
 .SH SEE ALSO
 .BR fsck (8),
 .BR fstab (5),
+.BR mkfs.exfat (8)
