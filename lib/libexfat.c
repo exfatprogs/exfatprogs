@@ -181,8 +181,7 @@ void init_user_input(struct exfat_user_input *ui)
 	ui->quick = true;
 	ui->discard = true;
 	ui->part_table = PART_TABLE_AUTO;
-	ui->bootcode.msg = dummy_bootcode_msg;
-	ui->bootcode.len = sizeof(DEFAULT_DUMMY_BOOTCODE_MSG) - 1;
+	ui->bootcode_msg = dummy_bootcode_msg;
 }
 
 static size_t count_dots(const char *s, const size_t n)
@@ -1709,4 +1708,203 @@ int exfat_check_name(__le16 *utf16_name, int len)
 	}
 
 	return i;
+}
+
+int exfat_select_part_type(const struct exfat_blk_dev *bd,
+		enum exfat_part_table_type *pt, const bool quiet)
+{
+	if (bd->isblk && !bd->ispart && bd->isdev && !bd->isremov) {
+		/*
+		 * If the target volume:
+		 *
+		 *  - is a block device AND
+		 *  - is not a partition AND
+		 *  - is a real device (not "virtual" like loopdev, dm, nbd or anything) AND
+		 *  - hasn't got "removable" USB attribute
+		 *
+		 * , it needs a partition table for MS Windows to be able to recognise it. Go
+		 * through fairly straightforward heuristics to determine the type of partition
+		 * table suitable for this device.
+		 */
+		if (*pt == PART_TABLE_NONE) {
+			/* The user says no... Well, we could at least warn them. */
+			if (!quiet) {
+				exfat_info("!!! A partition table is required for MS Windows to recognise this volume !!!\n");
+				exfat_info("But one will not be created because it's been overridden with -P option.\n");
+			}
+			return 0;
+		}
+
+		if (*pt == PART_TABLE_AUTO) {
+			if (bd->size >= 2ULL * TB)
+				/*
+				 * no, we don't determine based on the sector count because it
+				 * doesn't matter for Windows. 4K-bs or not, it just can't do MBR on
+				 * >= 2TiB devices.
+				 */
+				*pt = PART_TABLE_GPT;
+			else
+				*pt = PART_TABLE_MBR;
+		}
+	} else if (*pt == PART_TABLE_AUTO)
+		/* For any other type of blockdev, don't worry about it */
+		*pt = PART_TABLE_NONE;
+
+	/*
+	 * There's a classic off-by-one limitation common in many implementations where the size of
+	 * the partition in the recursive(fake) MBR may be calculated off by one. Let's just not
+	 * deal with that case by imposing the hard limit of 2 TiB, inclusive.
+	 *
+	 * See exfat_put_mbr_partition().
+	 */
+	if (bd->size >= 2ULL * TB && *pt == PART_TABLE_MBR) {
+		exfat_err("Refusing to create an MBR partition table on a device that's 2 TiB or larger!\n");
+		return -1;
+	}
+
+	if (bd->ispart && *pt != PART_TABLE_NONE) {
+		/* bro... */
+		exfat_err("Refusing to create a partition table within a partition!\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static void lba_to_chs(const uint32_t lba, const uint32_t sec_per_track, const uint32_t heads,
+		uint8_t *a, uint8_t *b, uint8_t *c)
+{
+	unsigned int head_low, head_high;
+
+	head_low = (1 + lba % sec_per_track) & 0x3F;
+	head_high = ((lba / (heads * sec_per_track)) >> 8) << 6;
+
+	*a = (uint8_t)((lba / sec_per_track) % heads);
+	*b = (uint8_t)(head_low | head_high);
+	*c = (uint8_t)((lba / (heads * sec_per_track)) & 255);
+}
+
+void exfat_put_mbr_partition(const struct exfat_blk_dev *bd, void *dst,
+		uint32_t serial, uint32_t offset_sector, const bool active,
+		const uint8_t ptype, uint32_t chs_limit)
+{
+	struct pbr *out = dst;
+	uint32_t heads, sec_per_track;
+	uint32_t nb_secs, last_sect;
+
+	/*
+	 * Now, we're entering the fictional land of CHS.
+	 * Refer to mkfs.fat.c in dosfstools in order to make sense of all this.
+	 *
+	 * It really doesn't matter for implementations that understand exFAT.
+	 *
+	 * CHS Recommendations from SD Card Part 2 File System Specification
+	 * Version 3.00 (April 16, 2009)
+	 */
+	if (bd->num_sectors >= 67371008) { /* 32896MB */
+		/* Appendix C.5.2 */
+		heads = 255;
+		sec_per_track = 63;
+	} else if (bd->num_sectors <= 524288) { /* 256MB */
+		heads = bd->num_sectors <=  32768 ? 2 :
+			bd->num_sectors <=  65536 ? 4 :
+			bd->num_sectors <= 262144 ? 8 : 16;
+		sec_per_track = bd->num_sectors <= 4096 ? 16 : 32;
+	} else {
+		heads = bd->num_sectors <=  16*63*1024 ? 16 :
+			bd->num_sectors <=  32*63*1024 ? 32 :
+			bd->num_sectors <=  64*63*1024 ? 64 :
+			bd->num_sectors <= 128*63*1024 ? 128 : 255;
+		sec_per_track = 63;
+	}
+
+	/*
+	 * Careful, some arches like IBM z, MIPS, older ARMv4 can't do unaligned
+	 * memory access. Access byte-by-byte or use memcpy()/memset() or the
+	 * process will crash with SIGBUS.
+	 */
+
+	/* 0x01B8: 32-bit disk signature */
+	serial = cpu_to_le32(serial);
+	memcpy(&out->mbr.disk_signature, &serial, 4);
+	/* 0x01BC: copy-protected? (nope) */
+	memset(&out->mbr.copy_protected, 0, 2);
+
+	/* start with a clean slate */
+	memset(&out->mbr.part_entries, 0, sizeof(out->mbr.part_entries));
+
+	/* Partition entry #1 */
+	/* is active (boot flag)? */
+	if (active)
+		out->mbr.part_entries[0].active = 0x80;
+
+	/* CHS address of the first sector */
+	lba_to_chs(offset_sector, sec_per_track, heads,
+			&out->mbr.part_entries[0].chs_ofs[0],
+			&out->mbr.part_entries[0].chs_ofs[1],
+			&out->mbr.part_entries[0].chs_ofs[2]);
+
+	/* Partition type */
+	out->mbr.part_entries[0].type = ptype;
+
+	/* Demote sectors to 32 bit for calculations, clamp to 0xFFFFFFFF as per UEFI spec */
+
+	if (bd->num_sectors - offset_sector > UINT32_MAX)
+		nb_secs = UINT32_MAX;
+	else
+		nb_secs = (uint32_t)(bd->num_sectors - offset_sector);
+	if (bd->num_sectors > UINT32_MAX)
+		last_sect = UINT32_MAX;
+	else
+		last_sect = (uint32_t)bd->num_sectors;
+
+	/* CHS address of the last sector */
+	if (bd->num_sectors >= sec_per_track * heads * 1024) {
+		/* CHS address is too large use tuple supplied */
+		chs_limit = cpu_to_le32(chs_limit);
+		memcpy(&out->mbr.part_entries[0].chs_end, &chs_limit, 3);
+	} else
+		lba_to_chs(last_sect, sec_per_track, heads,
+				&out->mbr.part_entries[0].chs_end[0],
+				&out->mbr.part_entries[0].chs_end[1],
+				&out->mbr.part_entries[0].chs_end[2]);
+
+
+	/* LBA of the first sector */
+	offset_sector = cpu_to_le32(offset_sector);
+	memcpy(&out->mbr.part_entries[0].ofs_lba, &offset_sector, 4);
+
+	/* Number of sectors */
+	nb_secs = cpu_to_le32(nb_secs);
+	memcpy(&out->mbr.part_entries[0].len_lba, &nb_secs, 4);
+}
+
+void exfat_put_bootstrap_code(const char *user_msg, void *dst, unsigned int code_offset)
+{
+	char *p = dst;
+	size_t msglen = strlen(user_msg);
+	uint16_t jump_ofs;
+
+	msglen = MIN(msglen, (size_t)EXFAT_MAX_BOOTCODE_MSGLEN);
+
+	jump_ofs = 0x7C00 + code_offset + EXFAT_DUMMY_BOOTCODE_SIZE;
+	jump_ofs = cpu_to_le16(jump_ofs);
+
+	memcpy(p, dummy_bootcode, EXFAT_DUMMY_BOOTCODE_SIZE);
+	memcpy(p + EXFAT_BOOTCODE_MSG_JMP_OFFSET, &jump_ofs, 2);
+	p += EXFAT_DUMMY_BOOTCODE_SIZE;
+	memcpy(p, user_msg, msglen);
+	p += msglen;
+	if (msglen > 1 && strncmp(p - 2, "\r\n", 2) != 0) {
+		/* Terminate the message with CrLF if possible */
+		if (msglen + 2 <= EXFAT_MAX_BOOTCODE_MSGLEN) {
+			p[0] = '\r';
+			p[1] = '\n';
+			p += 2;
+		} else if (msglen + 1 <= EXFAT_MAX_BOOTCODE_MSGLEN) {
+			p[0] = '\n';
+			p += 1;
+		}
+	}
+	/* *p = 0; */
 }

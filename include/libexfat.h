@@ -148,10 +148,7 @@ struct exfat_user_input {
 		void (*free)(struct exfat_user_input *ui);
 	} upcase;
 
-	struct {
-		const char *msg;
-		size_t len;
-	} bootcode;
+	const char *bootcode_msg;
 
 	enum exfat_part_table_type part_table;
 };
@@ -347,6 +344,37 @@ void *exfat_map_blankmem(const size_t len, bool *mapped);
  * returned from munmap(). Otherwise, call free() and return 0.
  */
 int exfat_unmap_mm(const void *m, const size_t len, bool *mapped);
+
+/*
+ * Partition table related
+ */
+
+int exfat_select_part_type(const struct exfat_blk_dev *bd,
+		enum exfat_part_table_type *pt, const bool quiet);
+/*
+ * Put one partition entry that covers the entire device. Used for both
+ * protective MBR for GPT and "fake"(recursive) MBR for "fixed" devices for
+ * Windows.
+ *
+ * For protective MBRs, unset active flag and set offset_sector to 1 as per
+ * UEFI spec.
+ *
+ * As for chs_limit, set to
+ *
+ *  - 0xFFFFFE: "conventional" tuple limit (1023, 254, 63)
+ *  - 0xFFFFFF: tuple limit mandated by UEFI spec (1023, 255, 63)
+ *
+ * Note that LBA is always clamped to 0xFFFFFFFF.
+ *
+ * As for ptype, set to
+ *
+ *  - 0x07: HPFS/NTFS/exFAT
+ *  - 0xEE: GPT protective
+ */
+void exfat_put_mbr_partition(const struct exfat_blk_dev *bd, void *dst,
+		uint32_t serial, uint32_t offset_sector, const bool active,
+		const uint8_t ptype, uint32_t chs_limit);
+void exfat_put_bootstrap_code(const char *user_msg, void *dst, unsigned int code_offset);
 
 /*
  * Exfat Print
