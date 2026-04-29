@@ -1084,7 +1084,7 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd, struct exfat_user_inp
 		return -1;
 	}
 	total_clu_cnt = (finfo.target.byte.len - finfo.clu_byte_off) / ui->cluster_size;
-	if (total_clu_cnt > EXFAT_MAX_NUM_CLUSTER) {
+	if (total_clu_cnt >= EXFAT_MAX_NUM_CLUSTER) {
 		exfat_err("cluster size is too small\n");
 		return -1;
 	}
