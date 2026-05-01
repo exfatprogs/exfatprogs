@@ -37,14 +37,15 @@ int main(int argc, char *argv[])
 {
 	int c;
 	int ret = EXIT_FAILURE;
-	struct exfat_blk_dev bd = { 0, };
+	struct exfat_blk_dev bd;
 	struct exfat_user_input ui;
 	bool version_only = false;
 	int serial_mode = 0;
 	int flags = 0;
 	unsigned long volume_serial;
 
-	init_user_input(&ui);
+	exfat_init_blk_dev_info(&bd);
+	exfat_init_user_input(&ui);
 
 	if (!setlocale(LC_CTYPE, ""))
 		exfat_err("failed to init locale/codeset\n");
@@ -100,7 +101,7 @@ int main(int argc, char *argv[])
 
 			if (ret < 0) {
 				exfat_err("invalid serial number(%s)\n", argv[3]);
-				goto close_fd_out;
+				goto out;
 			}
 
 			ui.volume_serial = volume_serial;
@@ -112,7 +113,7 @@ int main(int argc, char *argv[])
 		exfat = exfat_alloc_exfat(&bd, NULL, NULL);
 		if (!exfat) {
 			ret = -ENOMEM;
-			goto close_fd_out;
+			goto out;
 		}
 
 		/* Mode to change or display volume label */
@@ -124,8 +125,9 @@ int main(int argc, char *argv[])
 		exfat_free_exfat(exfat);
 	}
 
-close_fd_out:
-	close(bd.dev_fd);
 out:
+	exfat_deinit_blk_dev_info(&bd);
+	exfat_deinit_user_input(&ui);
+
 	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -104,23 +104,19 @@ void exfat_free_dir_list(struct exfat *exfat)
 
 void exfat_free_exfat(struct exfat *exfat)
 {
-	if (exfat) {
-		if (exfat->bs)
-			free(exfat->bs);
-		if (exfat->alloc_bitmap)
-			free(exfat->alloc_bitmap);
-		if (exfat->disk_bitmap)
-			free(exfat->disk_bitmap);
-		if (exfat->ohead_bitmap)
-			free(exfat->ohead_bitmap);
-		if (exfat->upcase_table)
-			free(exfat->upcase_table);
-		if (exfat->root)
-			exfat_free_inode(exfat->root);
-		if (exfat->lookup_buffer)
-			exfat_free_buffer(exfat, exfat->lookup_buffer);
-		free(exfat);
-	}
+	if (exfat == NULL)
+		return;
+
+	free(exfat->bs);
+	free(exfat->alloc_bitmap);
+	free(exfat->disk_bitmap);
+	free(exfat->ohead_bitmap);
+	free(exfat->upcase_table);
+	exfat_free_inode(exfat->root);
+	if (exfat->lookup_buffer)
+		exfat_free_buffer(exfat, exfat->lookup_buffer);
+
+	free(exfat);
 }
 
 struct exfat *exfat_alloc_exfat(struct exfat_blk_dev *blk_dev, struct pbr *bs,

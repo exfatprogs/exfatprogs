@@ -1344,13 +1344,14 @@ int main(int argc, char *argv[])
 {
 	int c;
 	int ret = EXIT_FAILURE;
-	struct exfat_blk_dev bd = { 0, };
+	struct exfat_blk_dev bd;
 	struct exfat_user_input ui;
 	bool version_only = false;
 	bool quiet = false;
 	bool gptwo_tried = false; /* Set if GPT structure write out has been tried */
 
-	init_user_input(&ui);
+	exfat_init_blk_dev_info(&bd);
+	exfat_init_user_input(&ui);
 
 	if (!setlocale(LC_CTYPE, ""))
 		exfat_err("failed to init locale/codeset\n");
@@ -1521,7 +1522,7 @@ int main(int argc, char *argv[])
 
 	ret = exfat_select_part_type(&bd, &ui.part_table, quiet);
 	if (ret)
-		goto close;
+		goto out;
 	/* Whether we should create a partition table or not MUST be decided after this point. */
 	assert(ui.part_table == PART_TABLE_NONE ||
 		ui.part_table == PART_TABLE_MBR ||
@@ -1531,7 +1532,7 @@ int main(int argc, char *argv[])
 	if (ui.part_table == PART_TABLE_GPT) {
 		ret = build_gpt(&bd, &ui);
 		if (ret)
-			goto close;
+			goto out;
 
 		/* build the info based on the new GPT partition */
 		ret = exfat_build_mkfs_info(&bd, &ui,
@@ -1543,7 +1544,7 @@ int main(int argc, char *argv[])
 		ret = exfat_build_mkfs_info(&bd, &ui, 0, bd.num_sectors, bd.offset);
 
 	if (ret)
-		goto close;
+		goto out;
 
 	exfat_discard_dev(&bd, &ui);
 	/*
@@ -1553,7 +1554,7 @@ int main(int argc, char *argv[])
 	 */
 	ret = exfat_zero_out_disk(&bd, &ui);
 	if (ret)
-		goto close;
+		goto out;
 
 	if (ui.part_table == PART_TABLE_GPT) {
 		gptwo_tried = true;
@@ -1577,7 +1578,7 @@ int main(int argc, char *argv[])
 
 	ret = make_exfat(&bd, &ui);
 	if (ret)
-		goto close;
+		goto out;
 
 	if (!quiet) {
 		exfat_info("Filesystem UUID: %04X-%04X\n",
@@ -1593,8 +1594,6 @@ int main(int argc, char *argv[])
 
 	exfat_info("Synchronizing...\n");
 	ret = fsync(bd.dev_fd);
-close:
-	close(bd.dev_fd);
 out:
 	if (ret && gptwo_tried) {
 		exfat_info("Wiping out GPT structures...\n");
@@ -1613,6 +1612,8 @@ out:
 	exfat_free_upcase(&ui);
 	exfat_close_fd_devzero();
 	exfat_close_rnddev();
+	exfat_deinit_blk_dev_info(&bd);
+	exfat_deinit_user_input(&ui);
 
 	if (!ret)
 		exfat_info("\nexFAT format complete!\n");

@@ -216,7 +216,10 @@ void show_version(void);
 wchar_t exfat_bad_char(wchar_t w);
 void boot_calc_checksum(const unsigned char *sector, size_t size,
 		bool is_boot_sec, __le32 *checksum);
-void init_user_input(struct exfat_user_input *ui);
+void exfat_init_user_input(struct exfat_user_input *ui);
+void exfat_deinit_user_input(struct exfat_user_input *ui);
+void exfat_init_blk_dev_info(struct exfat_blk_dev *bd);
+void exfat_deinit_blk_dev_info(struct exfat_blk_dev *bd);
 int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		struct exfat_blk_dev *bd);
 /*

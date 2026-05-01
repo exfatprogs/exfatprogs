@@ -174,7 +174,7 @@ static void exfat_set_default_cluster_size(struct exfat_blk_dev *bd,
 		ui->cluster_size = 128 * KB;
 }
 
-void init_user_input(struct exfat_user_input *ui)
+void exfat_init_user_input(struct exfat_user_input *ui)
 {
 	memset(ui, 0, sizeof(struct exfat_user_input));
 	ui->writeable = true;
@@ -182,6 +182,25 @@ void init_user_input(struct exfat_user_input *ui)
 	ui->discard = true;
 	ui->part_table = PART_TABLE_AUTO;
 	ui->bootcode_msg = dummy_bootcode_msg;
+}
+
+void exfat_deinit_user_input(struct exfat_user_input *ui)
+{
+	/* nothing, yet */
+}
+
+void exfat_init_blk_dev_info(struct exfat_blk_dev *bd)
+{
+	memset(bd, 0, sizeof(*bd));
+	bd->dev_fd = -1;
+}
+
+void exfat_deinit_blk_dev_info(struct exfat_blk_dev *bd)
+{
+	if (bd->dev_fd >= 0) {
+		close(bd->dev_fd);
+		bd->dev_fd = -1;
+	}
 }
 
 static size_t count_dots(const char *s, const size_t n)
