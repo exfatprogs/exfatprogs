@@ -44,7 +44,8 @@ enum {
 };
 
 struct exfat2img {
-	int			out_fd;
+	int			out_fd;		/* fd that we DO NOT have ownership to */
+	int			opened_fd;	/* fd that we HAVE opened and have to close */
 	bool			is_stdout;
 	off_t			stdout_offset;
 	bool			save_cc;
@@ -92,6 +93,12 @@ static void usage(const char *name)
 			##__VA_ARGS__);			\
 })
 
+static void init_exfat2img(struct exfat2img *ei)
+{
+	memset(ei, 0, sizeof(*ei));
+	ei->out_fd = ei->opened_fd = -1;
+}
+
 static void free_exfat2img(struct exfat2img *ei)
 {
 	if (ei->scan_bdesc)
@@ -100,10 +107,11 @@ static void free_exfat2img(struct exfat2img *ei)
 		exfat_free_exfat(ei->exfat);
 	if (ei->dump_cluster)
 		free(ei->dump_cluster);
-	if (ei->out_fd)
-		close(ei->out_fd);
-	if (ei->bdev.dev_fd)
-		close(ei->bdev.dev_fd);
+	if (ei->opened_fd >= 0) {
+		close(ei->opened_fd);
+		ei->opened_fd = -1;
+	}
+	exfat_deinit_blk_dev_info(&ei->bdev);
 }
 
 static int create_exfat2img(struct exfat2img *ei, const char *out_path)
@@ -127,10 +135,10 @@ static int create_exfat2img(struct exfat2img *ei, const char *out_path)
 	}
 
 	if (strcmp(out_path, "-")) {
-		ei->out_fd = open(out_path, O_CREAT | O_TRUNC | O_RDWR, 0664);
+		ei->opened_fd = ei->out_fd = open(out_path, O_CREAT | O_TRUNC | O_RDWR, 0664);
 	} else {
 		ei->is_stdout = true;
-		ei->out_fd = fileno(stdout);
+		ei->out_fd = STDOUT_FILENO; /* POSIX spec mandates stdout == 1 */
 		ei->save_cc = true;
 	}
 	if (ei->out_fd < 0) {
@@ -749,7 +757,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 	off_t in_start_off;
 	size_t len;
 
-	in_fd = fileno(stdin);
+	in_fd = STDIN_FILENO; /* POSIX spec mandates stdin == 0 */
 	if (in_fd < 0) {
 		exfat_err("failed to get fd from stdin\n");
 		return in_fd;
@@ -918,13 +926,15 @@ int main(int argc, char * const argv[])
 		blkdev_path = in_path;
 	}
 
-	memset(&ui, 0, sizeof(ui));
+	init_exfat2img(&ei);
+	exfat_init_user_input(&ui);
 	ui.dev_name = blkdev_path;
 	if (restore)
 		ui.writeable = true;
 	else
 		ui.writeable = false;
 
+	exfat_init_blk_dev_info(&ei.bdev);
 	if (exfat_get_blk_dev_info(&ui, &ei.bdev)) {
 		exfat_err("failed to open %s\n", ui.dev_name);
 		return EXIT_FAILURE;
@@ -969,13 +979,20 @@ int main(int argc, char * const argv[])
 		err = dump_to_stdout(&ei);
 		if (err)
 			goto out;
+
+		/*
+		 * Just do it: the stdout might have been redirected to a file or blockdev after
+		 * all. This shouldn't hurt anything even if it fails because out_fd is actually a
+		 * pipe or chardev(EINVAL). If stdout was redirected to a file and it fails, well,
+		 * that's on the user who used shell redirection to do such a critical operation.
+		 */
+		fsync(ei.out_fd);
 	} else {
 		err = fsync(ei.out_fd);
 		if (err) {
 			exfat_err("failed to fsync %s. %d\n", out_path, errno);
 			goto out;
 		}
-		close(ei.out_fd);
 	}
 
 	printf("%ld files found, %ld directories dumped, %llu kbytes written\n",
@@ -985,5 +1002,6 @@ int main(int argc, char * const argv[])
 
 out:
 	free_exfat2img(&ei);
+	exfat_deinit_user_input(&ui);
 	return err == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -919,14 +919,15 @@ int main(int argc, char *argv[])
 {
 	int c;
 	int ret = EXIT_FAILURE;
-	struct exfat_blk_dev bd = { 0, };
+	struct exfat_blk_dev bd;
 	struct exfat_user_input ui;
 	bool version_only = false;
 	struct exfat *exfat;
 	const char *path = NULL;
 	uint32_t flags = 0;
 
-	init_user_input(&ui);
+	exfat_init_blk_dev_info(&bd);
+	exfat_init_user_input(&ui);
 	ui.writeable = false;
 
 	if (!setlocale(LC_CTYPE, ""))
@@ -973,7 +974,7 @@ int main(int argc, char *argv[])
 	exfat = exfat_alloc_exfat(&bd, NULL, NULL);
 	if (!exfat) {
 		ret = -ENOMEM;
-		goto close_dev_fd;
+		goto out;
 	}
 
 	if (path)
@@ -983,9 +984,9 @@ int main(int argc, char *argv[])
 
 	exfat_free_exfat(exfat);
 
-close_dev_fd:
-	close(bd.dev_fd);
-
 out:
+	exfat_deinit_blk_dev_info(&bd);
+	exfat_deinit_user_input(&ui);
+
 	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -967,9 +967,8 @@ int main(int argc, char *argv[])
 	bool only_show_version = false;
 	bool show_fsck_warning = true;
 
-	memset(&ui, 0, sizeof(ui));
-	memset(&bd, 0, sizeof(bd));
-	bd.dev_fd = -1;
+	exfat_init_user_input(&ui);
+	exfat_init_blk_dev_info(&bd);
 
 	/* step-0: Parameter Processing and Mode Recognition */
 
@@ -1150,8 +1149,8 @@ fsync_and_free:
 		exfat_free_exfat(defrag.exfat);
 
 out:
-	if (bd.dev_fd >= 0)
-		close(bd.dev_fd);
+	exfat_deinit_blk_dev_info(&bd);
+	exfat_deinit_user_input(&ui);
 
 	if (ret == 0) {
 		if (only_assessment)

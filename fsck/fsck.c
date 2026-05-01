@@ -68,6 +68,17 @@ static struct option opts[] = {
 	{NULL, 0, NULL, 0}
 };
 
+static void init_fsck_user_input(struct fsck_user_input *fu)
+{
+	memset(fu, 0, sizeof(*fu));
+	exfat_init_user_input(&fu->ei);
+}
+
+static void deinit_fsck_user_input(struct fsck_user_input *fu)
+{
+	exfat_deinit_user_input(&fu->ei);
+}
+
 static void usage(char *name)
 {
 	fprintf(stderr, "Usage: %s\n", name);
@@ -1917,8 +1928,8 @@ int main(int argc, char * const argv[])
 	bool version_only = false;
 	clus_t used_clus_count;
 
-	memset(&ui, 0, sizeof(ui));
-	memset(&bd, 0, sizeof(bd));
+	init_fsck_user_input(&ui);
+	exfat_init_blk_dev_info(&bd);
 
 	print_level = EXFAT_ERROR;
 
@@ -2117,6 +2128,9 @@ err:
 		exfat_free_buffer(exfat_fsck.exfat, exfat_fsck.buffer_desc);
 	if (exfat_fsck.exfat)
 		exfat_free_exfat(exfat_fsck.exfat);
-	close(bd.dev_fd);
+
+	exfat_deinit_blk_dev_info(&bd);
+	deinit_fsck_user_input(&ui);
+
 	return exit_code;
 }
