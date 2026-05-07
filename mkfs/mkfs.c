@@ -1502,16 +1502,34 @@ static int exfat_select_part_type(struct exfat_blk_dev *bd,
 
 static long long parse_size(const char *size)
 {
+	int saved_errno;
 	char *data_unit;
-	unsigned long long byte_size = strtoull(size, &data_unit, 0);
+	unsigned long long byte_size;
+
+	saved_errno = errno;
+	errno = 0;
+	byte_size = strtoull(size, &data_unit, 0);
+	if (errno != 0)
+		goto err;
+	errno = saved_errno;
 
 	switch (*data_unit) {
 	case 'M':
 	case 'm':
+		if (byte_size >> 20) {
+			/* overflow */
+			errno = EOVERFLOW;
+			goto err;
+		}
 		byte_size <<= 20;
 		break;
 	case 'K':
 	case 'k':
+		if (byte_size >> 10) {
+			/* overflow */
+			errno = EOVERFLOW;
+			goto err;
+		}
 		byte_size <<= 10;
 		break;
 	case '\0':
@@ -1523,6 +1541,10 @@ static long long parse_size(const char *size)
 	}
 
 	return byte_size;
+err:
+	saved_errno = errno;
+	exfat_err("Invalid size: %s(%s)\n", size, strerror(saved_errno));
+	return -saved_errno;
 }
 
 int main(int argc, char *argv[])
@@ -1582,9 +1604,8 @@ int main(int argc, char *argv[])
 			ret = parse_size(optarg);
 			if (ret < 0)
 				goto out;
-			else if (ret & (ret - 1)) {
-				exfat_err("cluster size(%d) is not a power of 2)\n",
-					ret);
+			else if (ret == 0 || (ret & (ret - 1))) {
+				exfat_err("cluster size(%d) is not a power of 2\n", ret);
 				goto out;
 			} else if (ret > EXFAT_MAX_CLUSTER_SIZE) {
 				exfat_err("cluster size(%d) exceeds max cluster size(%d)\n",
@@ -1597,8 +1618,8 @@ int main(int argc, char *argv[])
 			ret = parse_size(optarg);
 			if (ret < 0)
 				goto out;
-			else if (ret & (ret - 1)) {
-				exfat_err("boundary align(%d) is not a power of 2)\n",
+			else if (ret == 0 || ret & (ret - 1)) {
+				exfat_err("boundary align(%d) is not a power of 2\n",
 					ret);
 				goto out;
 			}
