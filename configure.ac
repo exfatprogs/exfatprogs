@@ -33,6 +33,15 @@ AC_CONFIG_FILES([
 	dump/Makefile
 	exfat2img/Makefile
 	upcase/Makefile
+	dosattr/Makefile
 ])
+
+AC_CHECK_HEADERS([fts.h], [have_fts_h="yes"])
+AM_CONDITIONAL([ENABLE_DOSATTR], [test "x$have_fts_h" == "xyes"])
+AM_COND_IF(
+	[ENABLE_DOSATTR],
+	[AC_CHECK_LIB([fts], [fts_open])],
+	[echo "<fts.h> not found. Not building dosattr programs"]
+)
 
 AC_OUTPUT
