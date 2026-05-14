@@ -44,4 +44,17 @@ AM_COND_IF(
 	[echo "<fts.h> not found. Not building dosattr programs"]
 )
 
+PKG_CHECK_MODULES([BLKID], [blkid >= 2.20],
+	[
+		AC_DEFINE([HAVE_LIBBLKID], [1], [Define to 1 if libblkid is available.])
+	],
+	[
+		BLKID_CFLAGS=
+		BLKID_LIBS=
+		AC_MSG_WARN([libblkid not found or too old; foreign filesystem detection in mkfs.exfat will be disabled])
+	]
+)
+AC_SUBST([BLKID_CFLAGS])
+AC_SUBST([BLKID_LIBS])
+
 AC_OUTPUT

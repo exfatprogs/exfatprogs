@@ -16,6 +16,8 @@ mkfs.exfat \- create an exFAT filesystem
 ] [
 .B \-f
 ] [
+.B \-F
+] [
 .B \-C
 ] [
 .B \-h
@@ -115,6 +117,13 @@ _
 Performs a full format.
 This zeros the entire disk device while creating the exFAT filesystem.
 .TE
+.TP
+.BR \-F ", " \-\-force
+Allow overwriting a device that already contains a non-exFAT filesystem.
+Without this option, mkfs.exfat refuses to format when libblkid detects a
+foreign filesystem signature on the target device.
+This safeguard is unavailable when exfatprogs is built without libblkid
+support.
 .TP
 .BR \-K ", " \-\-no\-discard
 Do not attempt to discard blocks.

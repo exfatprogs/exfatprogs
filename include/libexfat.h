@@ -132,6 +132,7 @@ struct exfat_user_input {
 	unsigned int boundary_align;
 	bool pack_bitmap;
 	bool quick;
+	bool force;
 	bool verify;
 	bool discard;
 	__u16 volume_label[VOLUME_LABEL_MAX_LEN];

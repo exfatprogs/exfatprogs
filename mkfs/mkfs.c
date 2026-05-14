@@ -22,6 +22,9 @@
 #ifdef _POSIX_MAPPED_FILES
 #include <sys/mman.h>
 #endif
+#ifdef HAVE_LIBBLKID
+#include <blkid/blkid.h>
+#endif
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
@@ -843,6 +846,7 @@ static void usage(void)
 		"\t     --bootcode-msg=message                            Specify custom message in MBR bootstrap code\n"
 		"\t-P | --partition-table=auto|none|mbr|gpt               Specify partition table\n"
 		"\t-f | --full-format                                     Full format\n"
+		"\t-F | --force                                           Overwrite an existing non-exFAT filesystem\n"
 		"\t-C | --check-written                                   Verify written filesystem metadata by read-back\n"
 		"\t-K | --no-discard                                      Do not discard blocks\n"
 		"\t-V | --version                                         Show version\n"
@@ -868,6 +872,7 @@ static const struct option opts[] = {
 	{"bootcode-msg",	required_argument,	NULL,	BOOTCODE_MSG },
 	{"pack-bitmap",		no_argument,		NULL,	PACK_BITMAP },
 	{"full-format",		no_argument,		NULL,	'f' },
+	{"force",		no_argument,		NULL,	'F' },
 	{"check-written",	no_argument,		NULL,	'C' },
 	{"no-discard",		no_argument,		NULL,	'K' },
 	{"partition-table",	no_argument,		NULL,	'P' },
@@ -1172,6 +1177,52 @@ out:
 	return ret;
 }
 
+#ifdef HAVE_LIBBLKID
+static int check_existing_filesystem(const char *dev_name, bool force)
+{
+	blkid_probe probe;
+	const char *fstype = NULL;
+	int ret = 0;
+
+	probe = blkid_new_probe_from_filename(dev_name);
+	if (!probe) {
+		exfat_err("Failed to create blkid probe for %s\n", dev_name);
+		return -1;
+	}
+
+	blkid_probe_enable_superblocks(probe, 1);
+	blkid_probe_set_superblocks_flags(probe, BLKID_SUBLKS_TYPE);
+
+	if (blkid_do_safeprobe(probe) == 0 &&
+	    blkid_probe_lookup_value(probe, "TYPE", &fstype, NULL) == 0 &&
+	    fstype != NULL) {
+		exfat_debug("Detected filesystem type: %s\n", fstype);
+		if (strcmp(fstype, "exfat") != 0) {
+			if (!force) {
+				exfat_err("Device %s already contains a %s filesystem. Refusing to overwrite; use -F to force.\n",
+					  dev_name, fstype);
+				ret = -1;
+			} else {
+				exfat_info("Forcing overwrite of existing %s filesystem on %s.\n",
+					   fstype, dev_name);
+			}
+		}
+	} else {
+		exfat_debug("No existing filesystem detected on %s\n", dev_name);
+	}
+
+	blkid_free_probe(probe);
+	return ret;
+}
+#else
+static int check_existing_filesystem(const char *dev_name, bool force)
+{
+	(void)dev_name;
+	(void)force;
+	return 0;
+}
+#endif
+
 static void exfat_discard_dev(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
 {
@@ -1357,7 +1408,7 @@ int main(int argc, char *argv[])
 		exfat_err("failed to init locale/codeset\n");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:P:fCKVqvh", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:P:fFCKVqvh", opts, NULL)) != EOF)
 		switch (c) {
 		/*
 		 * Make 'n' option fallthrough to 'L' option for for backward
@@ -1432,6 +1483,9 @@ int main(int argc, char *argv[])
 		case 'f':
 			ui.quick = false;
 			break;
+		case 'F':
+			ui.force = true;
+			break;
 		case 'C':
 			ui.verify = true;
 			break;
@@ -1498,6 +1552,11 @@ int main(int argc, char *argv[])
 	ret = exfat_get_blk_dev_info(&ui, &bd);
 	if (ret < 0)
 		goto out;
+
+	ret = check_existing_filesystem(ui.dev_name, ui.force);
+	if (ret < 0)
+		goto out;
+
 	if (!quiet && ui.sector_size) {
 		exfat_info(
 			"!!! Use -s option only if you know what you're doing !!!\n"
