@@ -26,6 +26,20 @@ env:
   TEST_MAGIC: dd01aeee-bab0-babe-babe-deadcafebeef
 
   UTIL_LINUX_SRC: https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.tar.xz
+  # xfstests generic/740 equiv
+  FOREIGN_FS: |
+    (
+      "mkfs.exfat img"
+      "mkfs.fat img"
+      "mkfs.ext4 img"
+      "mkfs.btrfs img"
+      "mkfs.f2fs img"
+      "mkfs.ntfs -QF img"
+      "mkfs.xfs img"
+      "echo -e 'YES\n1234' | cryptsetup luksFormat --force-password img"
+      "parted img mkt msdos"
+      "parted img mkt gpt"
+    )
 
 jobs:
   memcheck:
@@ -154,6 +168,7 @@ jobs:
       run: |
         sudo apt-get --update --quiet --yes install \
              linux-headers-$(uname -r) xz-utils curl \
+             cryptsetup parted dosfstools e2fsprogs btrfs-progs f2fs-tools ntfs-3g xfsprogs \
              ${{ matrix.gcc }} ${{ matrix.qemu }} \
              qemu-user qemu-utils
         sudo apt-get install -y linux-modules-extra-$(uname -r)
@@ -202,6 +217,35 @@ jobs:
       run: |
         ./configure --host=${{ matrix.host }}
         make -j$((`nproc`+1))
+
+    - name: Test foreign filesystem detection
+      env:
+        EXFAT_TTY_OVERRIDE: 1
+      shell: bash
+      run: |
+        set -e
+
+        EXFAT_MKFS="$(realpath ./mkfs/mkfs.exfat)"
+
+        pushd "$(mktemp -d)"
+
+        declare -a arr=${{ env.FOREIGN_FS }}
+        for fs_cmd in "${arr[@]}"
+        do
+          truncate -s 0 img && truncate -s 1G img
+          echo === $fs_cmd ===
+          eval $fs_cmd
+
+          if "$EXFAT_MKFS" img
+          then
+            echo "mkfs.exfat overwrote existing fs !!!" >&2
+            exit 1
+          fi
+        done
+
+        rm -rf "$(realpath .)"
+        popd
+
     - name: run fsck repair testcases
       run: |
         pushd tests
