@@ -22,9 +22,7 @@
 #ifdef _POSIX_MAPPED_FILES
 #include <sys/mman.h>
 #endif
-#ifdef HAVE_LIBBLKID
-#include <blkid/blkid.h>
-#endif
+#include <blkid.h>
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
@@ -1177,51 +1175,82 @@ out:
 	return ret;
 }
 
-#ifdef HAVE_LIBBLKID
-static int check_existing_filesystem(const char *dev_name, bool force)
+static int check_existing_filesystem(const struct exfat_user_input *ui, const bool quiet)
 {
-	blkid_probe probe;
-	const char *fstype = NULL;
 	int ret = 0;
+	const char *fstype = NULL, *pttype = NULL;
+#if defined(HAVE_BLKID)
+	blkid_probe probe;
 
-	probe = blkid_new_probe_from_filename(dev_name);
-	if (!probe) {
-		exfat_err("Failed to create blkid probe for %s\n", dev_name);
-		return -1;
-	}
+	probe = blkid_new_probe_from_filename(ui->dev_name);
+	if (!probe)
+		goto alloc_err;
 
 	blkid_probe_enable_superblocks(probe, 1);
 	blkid_probe_set_superblocks_flags(probe, BLKID_SUBLKS_TYPE);
+	blkid_probe_enable_partitions(probe, 1);
 
-	if (blkid_do_safeprobe(probe) == 0 &&
-	    blkid_probe_lookup_value(probe, "TYPE", &fstype, NULL) == 0 &&
-	    fstype != NULL) {
-		exfat_debug("Detected filesystem type: %s\n", fstype);
-		if (strcmp(fstype, "exfat") != 0) {
-			if (!force) {
-				exfat_err("Device %s already contains a %s filesystem. Refusing to overwrite; use -F to force.\n",
-					  dev_name, fstype);
-				ret = -1;
-			} else {
-				exfat_info("Forcing overwrite of existing %s filesystem on %s.\n",
-					   fstype, dev_name);
-			}
+	if (blkid_do_safeprobe(probe) == 0) {
+		blkid_probe_lookup_value(probe, "TYPE", &fstype, NULL);
+		blkid_probe_lookup_value(probe, "PTTYPE", &pttype, NULL);
+	}
+#else
+	/*
+	 * Polyfill for Android(libext2_blkid) and systems without util-linux for reasons unknown
+	 *
+	 * Unfortunately, this variant of libblkid may not support detection of partition tables.
+	 */
+	blkid_cache cache = NULL;
+	blkid_dev dev;
+	blkid_tag_iterate iter;
+	const char *k, *v;
+
+	if (blkid_get_cache(&cache, NULL) < 0)
+		goto alloc_err;
+
+	dev = blkid_get_dev(cache, ui->dev_name, BLKID_DEV_CREATE | BLKID_DEV_VERIFY);
+	if (dev) {
+		iter = blkid_tag_iterate_begin(dev);
+		while (blkid_tag_next(iter, &k, &v) == 0) {
+			if (strcmp("TYPE", k) == 0)
+				fstype = v;
+			else if (strcmp("PTTYPE", k) == 0)
+				pttype = v;
+
+			if (fstype && pttype)
+				break;
 		}
-	} else {
-		exfat_debug("No existing filesystem detected on %s\n", dev_name);
+		blkid_tag_iterate_end(iter);
 	}
 
-	blkid_free_probe(probe);
-	return ret;
-}
-#else
-static int check_existing_filesystem(const char *dev_name, bool force)
-{
-	(void)dev_name;
-	(void)force;
-	return 0;
-}
 #endif
+
+	if (!quiet) {
+		/* Yes, (ex)FAT can contain both of these(as per SDXC specs) */
+		if (pttype)
+			exfat_info("Detected partition table type: %s\n", pttype);
+		if (fstype)
+			exfat_info("Detected filesystem type: %s\n", fstype);
+	}
+
+	if (pttype || fstype) {
+		if (exfat_isatty_stdio() && !ui->force) {
+			exfat_err("Device has existing signatures. Refusing to overwrite; use -F to force.\n");
+			ret = -1;
+		}
+	} else
+		exfat_debug("No existing filesystem detected\n");
+
+#if defined(HAVE_BLKID)
+	blkid_free_probe(probe);
+#else
+	blkid_put_cache(cache);
+#endif
+	return ret;
+alloc_err:
+	exfat_err("Failed to create blkid probe for %s\n", ui->dev_name);
+	return -1;
+}
 
 static void exfat_discard_dev(struct exfat_blk_dev *bd,
 		struct exfat_user_input *ui)
@@ -1527,7 +1556,17 @@ int main(int argc, char *argv[])
 		show_version();
 		exit(EXIT_FAILURE);
 	} else if (!quiet) {
+		const char *blkid_ver = "", *blkid_date = "";
+#ifdef HAVE_BLKID
+		const char *blkid_type = "";
+#else
+		const char *blkid_type = "(libext2?)";
+#endif
+
+		blkid_get_library_version(&blkid_ver, &blkid_date);
+
 		show_version();
+		printf("libblkid%s version : %s (%s)\n", blkid_type, blkid_ver, blkid_date);
 	}
 
 	if (argc - optind != 1) {
@@ -1553,7 +1592,7 @@ int main(int argc, char *argv[])
 	if (ret < 0)
 		goto out;
 
-	ret = check_existing_filesystem(ui.dev_name, ui.force);
+	ret = check_existing_filesystem(&ui, quiet);
 	if (ret < 0)
 		goto out;
 
