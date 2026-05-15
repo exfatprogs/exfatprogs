@@ -44,17 +44,11 @@ AM_COND_IF(
 	[echo "<fts.h> not found. Not building dosattr programs"]
 )
 
-PKG_CHECK_MODULES([BLKID], [blkid >= 2.20],
-	[
-		AC_DEFINE([HAVE_LIBBLKID], [1], [Define to 1 if libblkid is available.])
-	],
-	[
-		BLKID_CFLAGS=
-		BLKID_LIBS=
-		AC_MSG_WARN([libblkid not found or too old; foreign filesystem detection in mkfs.exfat will be disabled])
-	]
-)
-AC_SUBST([BLKID_CFLAGS])
-AC_SUBST([BLKID_LIBS])
+# There are two variants of libblkid: one from util-linux and the other from
+# e2fsprogs. In Android(AOSP), only the e2fsprogs variant is available.
+# Most distros don't provide a static libblkid so in order to build static
+# executables, libblkid.a will have to be built first.
+PKG_CHECK_MODULES([BLKID], [blkid >= 2.20], [AC_DEFINE([HAVE_BLKID], [1], [Define if libblkid is from util-linux])],
+	[PKG_CHECK_MODULES([EXT2_BLKID], [blkid], [AC_DEFINE([HAVE_EXT2_BLKID], [1], [Define if libblkid is from libext2])])])
 
 AC_OUTPUT

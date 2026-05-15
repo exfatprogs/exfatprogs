@@ -381,6 +381,20 @@ void exfat_put_mbr_partition(const struct exfat_blk_dev *bd, void *dst,
 void exfat_put_bootstrap_code(const char *user_msg, void *dst, unsigned int code_offset);
 
 /*
+ * Misc
+ */
+
+/*
+ * Returns true if STDIN and STDOUT are associated with a terminal. Returns
+ * false otherwise.
+ *
+ * To override the return value of this function, the influential env var
+ * EXFAT_TTY_OVERRIDE can be set to a non-negative integral value. This is for
+ * testing `mkfs.exfat -F` in xfstests and CI pipelines.
+ */
+bool exfat_isatty_stdio(void);
+
+/*
  * Exfat Print
  */
 

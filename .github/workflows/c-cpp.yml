@@ -25,6 +25,8 @@ env:
     1T 2T 3T 4T 6T 8T 16T 32T 44T 64T
   TEST_MAGIC: dd01aeee-bab0-babe-babe-deadcafebeef
 
+  UTIL_LINUX_SRC: https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.tar.xz
+
 jobs:
   memcheck:
     runs-on: ubuntu-latest
@@ -38,7 +40,7 @@ jobs:
       run: |
         sudo apt-get --update --quiet --yes install \
              linux-headers-$(uname -r) xz-utils \
-             valgrind ${{ matrix.cc }}
+             valgrind libblkid-dev ${{ matrix.cc }}
         sudo apt-get install -y linux-modules-extra-$(uname -r)
     - name: Build
       run: |
@@ -148,16 +150,35 @@ jobs:
             run:  qemu-i386
             name: i686
     steps:
-    - uses: actions/checkout@v6
     - name: Install packages
       run: |
         sudo apt-get --update --quiet --yes install \
-             linux-headers-$(uname -r) xz-utils \
+             linux-headers-$(uname -r) xz-utils curl \
              ${{ matrix.gcc }} ${{ matrix.qemu }} \
              qemu-user qemu-utils
         sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
+    - name: Build libblkid
+      shell: bash
+      run: |
+        set -e
+        curl "$UTIL_LINUX_SRC" | xzcat | tar xf -
+        pushd util-linux-*
+
+        ./configure --host=${{ matrix.host }} --prefix=/usr/${{ matrix.host }}/local \
+          --disable-shared --enable-static --disable-all-programs --enable-libblkid
+        make -j$((`nproc`+1))
+        sudo make -j$((`nproc`+1)) install
+        make -j$((`nproc`+1)) distclean
+
+        ./configure --disable-all-programs --enable-libblkid
+        make -j$((`nproc`+1))
+        sudo make -j$((`nproc`+1)) install
+
+        rm -rf "$(realpath .)"
+        popd
+    - uses: actions/checkout@v6
     - name: Bootstrap build system
       run: ./autogen.sh
     - name: Test building exfatprogs on arbitrary directory
@@ -175,8 +196,11 @@ jobs:
 
         rm -rf "$BUILD_DIR"
     - name: Build exfatprogs for test target
+      env:
+        CFLAGS: --static
+        PKG_CONFIG_PATH: /usr/${{ matrix.host }}/local/lib/pkgconfig
       run: |
-        ./configure --host=${{ matrix.host }} CFLAGS=--static
+        ./configure --host=${{ matrix.host }}
         make -j$((`nproc`+1))
     - name: run fsck repair testcases
       run: |

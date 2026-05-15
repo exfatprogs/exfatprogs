@@ -1927,3 +1927,17 @@ void exfat_put_bootstrap_code(const char *user_msg, void *dst, unsigned int code
 	}
 	/* *p = 0; */
 }
+
+bool exfat_isatty_stdio(void)
+{
+	const char *env = getenv("EXFAT_TTY_OVERRIDE");
+
+	if (env != NULL) {
+		int v = -1;
+
+		if (sscanf(env, "%d", &v) == 1 && v >= 0)
+			return v != 0;
+	}
+
+	return isatty(STDIN_FILENO) && isatty(STDOUT_FILENO);
+}
