@@ -46,6 +46,19 @@ static unsigned int get_new_serial(void)
 	return (unsigned int)(ts.tv_nsec << 12 | ts.tv_sec);
 }
 
+static void show_libblkid_version(void)
+{
+	const char *blkid_ver = "", *blkid_date = "";
+#ifdef HAVE_BLKID
+	const char *blkid_type = "";
+#else
+	const char *blkid_type = "(libext2?)";
+#endif
+
+	blkid_get_library_version(&blkid_ver, &blkid_date);
+	printf("libblkid%s version : %s (%s)\n", blkid_type, blkid_ver, blkid_date);
+}
+
 static inline unsigned long long gpt_backup_array_byte_offset(const struct exfat_blk_dev *bd,
 		const unsigned long long arr_size)
 {
@@ -1554,19 +1567,11 @@ int main(int argc, char *argv[])
 
 	if (version_only) {
 		show_version();
+		show_libblkid_version();
 		exit(EXIT_FAILURE);
 	} else if (!quiet) {
-		const char *blkid_ver = "", *blkid_date = "";
-#ifdef HAVE_BLKID
-		const char *blkid_type = "";
-#else
-		const char *blkid_type = "(libext2?)";
-#endif
-
-		blkid_get_library_version(&blkid_ver, &blkid_date);
-
 		show_version();
-		printf("libblkid%s version : %s (%s)\n", blkid_type, blkid_ver, blkid_date);
+		show_libblkid_version();
 	}
 
 	if (argc - optind != 1) {
