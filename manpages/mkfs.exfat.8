@@ -5,6 +5,8 @@ mkfs.exfat \- create an exFAT filesystem
 .SH SYNOPSIS
 .B mkfs.exfat
 [
+.B \-CfFKqv
+] [
 .B \-b
 .I boundary_alignment
 ] [
@@ -13,14 +15,6 @@ mkfs.exfat \- create an exFAT filesystem
 ] [
 .B \-c
 .I cluster_size
-] [
-.B \-f
-] [
-.B \-F
-] [
-.B \-C
-] [
-.B \-h
 ] [
 .B \-L
 .I volume_label
@@ -34,12 +28,12 @@ mkfs.exfat \- create an exFAT filesystem
 .B \-\-pack\-bitmap
 ] [
 .B \-\-upcase\fR=\fIfile\fR
-] [
-.B \-v
 ]
 .I device
 .br
 .B mkfs.exfat \-V
+.br
+.B mkfs.exfat \-h
 .SH DESCRIPTION
 .B mkfs.exfat
 creates an exFAT filesystem by writing on a special
