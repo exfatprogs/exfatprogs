@@ -1,3 +1,50 @@
+exfatprogs 1.3.3 - released 2026-05-26
+======================================
+
+NEW FEATURES :
+ * mkfs.exfat: add partition table creation support so
+   newly formatted devices are recognized by Windows.
+ * fsck.exfat: add "--put-mbr" and "--clear-mbr"
+   options to add or remove partition table entries for
+   Windows compatibility on existing volumes.
+ * mkfs.exfat: add the "--upcase" option to format with
+   a user-supplied upcase table.
+ * exfatprogs: add example upcase tables and a helper
+   script to generate upcase table binaries for testing.
+ * exfatprogs: add chdosattr and lsdosattr utilities to
+   view and modify DOS file attributes.
+
+CHANGES :
+ * mkfs.exfat: detect foreign filesystems and partition
+   tables before formatting, requiring "-F" for
+   interactive overwrite of non-exFAT volumes.
+ * mkfs.exfat: always clear the first 0x10000 bytes and
+   improve zero-out I/O, verification, and progress logs
+   during formatting.
+ * mkfs.exfat: reduce memory usage when formatting very
+   large devices.
+ * exfatprogs: include the release date in version output.
+ * mkfs.exfat: print the volume UUID after formatting,
+   warn when the "-s" option is used, and default to
+   512-byte clusters on very small devices.
+ * exfatprogs: recover from short read/write completions
+   during I/O operations.
+ * exfatprogs: refuse to run on pre-2.6 Linux kernels.
+
+BUG FIXES :
+ * fsck.exfat: fix bitmap bit counting sign extension and
+   handle progress bar overflow on corrupted bitmaps.
+ * mkfs.exfat: fix 32-bit overflow issues that could
+   select a wrong cluster size or fail with "-f".
+ * mkfs.exfat: reject invalid zero or overflowing size
+   arguments and correct the total cluster limit for
+   edge-case large volumes.
+ * mkfs.exfat: fix incorrect volume UUID printing and
+   use safer direct I/O for write verification.
+ * exfatprogs: fix 64-bit LBA sector I/O, integer
+   signedness issues, and memory errors reported by
+   valgrind in several utilities.
+
 exfatprogs 1.3.2 - release 2026-03-09
 ===================================
 
