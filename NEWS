@@ -1,4 +1,11 @@
-exfatprogs 1.3.3 - released 2026-05-26
+exfatprogs 1.4.1 - released 2026-05-28
+======================================
+
+BUG FIXES :
+ * exfatprogs: include missing DOS attribute headers and
+   upcase helper files in release tarballs.
+
+exfatprogs 1.4.0 - released 2026-05-26
 ======================================
 
 NEW FEATURES :
