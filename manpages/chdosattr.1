@@ -1,0 +1,79 @@
+.TH chdosattr 1
+.SH NAME
+chdosattr \- change DOS file attributes
+.SH SYNOPSIS
+.B chdosattr
+[
+.B \-RVH
+]
+.I ATTR
+.I FILES...
+
+.SH DESCRIPTION
+.P
+.B chdosattr
+changes the following DOS attributes of files:
+.IP
+\fBr\fP (READONLY)
+.IP
+\fBh\fP (HIDDEN)
+.IP
+\fBs\fP (SYSTEM)
+.IP
+\fBa\fP (ARCHIVED)
+.P
+The format of \fIATTR\fP is in two parts, in the format of
+[\fB\+\-\=\fP][\fBahrs\fP], where the first part is the operator spec the second
+part the DOS attributes. The operator \fB\+\fP causes the specified DOS
+attributes to be added the existing DOS attribute set; \fB\-\fP causes them to
+be removed; and \fB\=\fP causes them to be added and causes unmentioned DOS
+attributes to be removed. If the operator part is omitted, \fB\=\fP is assumed.
+
+.SH OPTIONS
+.TP
+.B \-R
+Change files and directories recursively
+.TP
+.B \-V
+Show version
+.TP
+.B \-H
+Show help
+
+.SH EXIT STATUS
+.TP
+.B 0
+on success
+.TP
+.B 1
+when no file could modified
+.TP
+.B 2
+on usage error
+.TP
+.B 3
+when an error occurred but at least one file has been successfully modified
+
+.SH BUGS AND LIMITATIONS
+.P
+The modification of the DOS attribute \fBs\fP(SYSTEM) requires
+\fBCAP_LINUX_IMMUTABLE\fP(see capabilities(7)).
+
+.P
+For obvious reasons, the DOS attributes \fBs\fP(DIRECTORY) and \fBv\fP(VOLUME)
+cannot be altered.
+
+.SH NOTE
+.P
+In vFAT, exFAT and NTFS, only the READONLY attribute is controlled through owner
+write permission bit. Linux kernel always sets ARCHIVE on files it creates and
+modifies. HIDDEN and SYSTEM can only be controlled through \fB ioctl_fat\fP(2).
+\fBlsdosattr\fP(1) and \fBchdosattr\fP(1) are the wrappers for the ioctl.
+
+.SH SEE ALSO
+.BR chmod (1),
+.BR chattr (1),
+.BR ioctl_fat (2)
+and the documentation on
+.B ATTRIB
+command in Microsoft Windows and various DOS.

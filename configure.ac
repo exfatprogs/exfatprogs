@@ -32,6 +32,23 @@ AC_CONFIG_FILES([
 	label/Makefile
 	dump/Makefile
 	exfat2img/Makefile
+	upcase/Makefile
+	dosattr/Makefile
 ])
+
+AC_CHECK_HEADERS([fts.h], [have_fts_h="yes"])
+AM_CONDITIONAL([ENABLE_DOSATTR], [test "x$have_fts_h" == "xyes"])
+AM_COND_IF(
+	[ENABLE_DOSATTR],
+	[AC_CHECK_LIB([fts], [fts_open])],
+	[echo "<fts.h> not found. Not building dosattr programs"]
+)
+
+# There are two variants of libblkid: one from util-linux and the other from
+# e2fsprogs. In Android(AOSP), only the e2fsprogs variant is available.
+# Most distros don't provide a static libblkid so in order to build static
+# executables, libblkid.a will have to be built first.
+PKG_CHECK_MODULES([BLKID], [blkid >= 2.20], [AC_DEFINE([HAVE_BLKID], [1], [Define if libblkid is from util-linux])],
+	[PKG_CHECK_MODULES([EXT2_BLKID], [blkid], [AC_DEFINE([HAVE_EXT2_BLKID], [1], [Define if libblkid is from libext2])])])
 
 AC_OUTPUT

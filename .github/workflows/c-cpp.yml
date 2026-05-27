@@ -10,59 +10,434 @@ on:
     - master
     - exfat-next
 
+env:
+  TEST_PART_TYPES: mbr gpt
+# FIXME
+#
+# As of writing of this, qemu-img does not support VHDX images whose block size
+# is other than 512. There's no other versatile util that can be used to create
+# 4096-BS VHDX
+  TEST_BLOCKSIZES: 512
+  # As of writing, the largest HDD on the market was 36TB
+  TEST_VOLUMESIZES: |
+    7M 128M 256M 512M
+    2G 3G 4G 5G 7G 32G 64G 128G 256G 512G
+    1T 2T 3T 4T 6T 8T 16T 32T 44T 64T
+  TEST_MAGIC: dd01aeee-bab0-babe-babe-deadcafebeef
+
+  UTIL_LINUX_SRC: https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.tar.xz
+  # xfstests generic/740 equiv
+  FOREIGN_FS: |
+    (
+      "mkfs.exfat img"
+      "mkfs.fat img"
+      "mkfs.ext4 img"
+      "mkfs.btrfs img"
+      "mkfs.f2fs img"
+      "mkfs.ntfs -QF img"
+      "mkfs.xfs img"
+      "echo -e 'YES\n1234' | cryptsetup luksFormat --force-password img"
+      "parted img mkt msdos"
+      "parted img mkt gpt"
+    )
+
 jobs:
-  build:
-
+  memcheck:
     runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [clang, gcc]
     steps:
-    - uses: actions/checkout@v4
-    - name: before test
+    - uses: actions/checkout@v6
+    - name: Install packages
       run: |
         sudo apt-get --update --quiet --yes install \
              linux-headers-$(uname -r) xz-utils \
-             gcc-mips-linux-gnu qemu-system-mips \
-             qemu-user
+             valgrind libblkid-dev ${{ matrix.cc }}
+        sudo apt-get install -y linux-modules-extra-$(uname -r)
+    - name: Build
+      run: |
+        export "CC=${{ matrix.cc }}"
+        ./autogen.sh && ./configure
+        make -j "$(nproc)"
+        sudo make install
+    - name: Run fsck with Valgrind
+      run: |
+        pushd tests
+        export FSCK1="valgrind --error-exitcode=1 ../fsck/fsck.exfat"
+        export FSCK2="valgrind --error-exitcode=1 ../fsck/fsck.exfat"
+        sudo -E ./test_fsck.sh
+        popd
+    - name: Run the rest with Valgrind
+      shell: bash
+      run: |
+        set -e
+
+        EXFAT_MKFS="$(realpath ./mkfs/mkfs.exfat)"
+        EXFAT_FSCK="$(realpath ./fsck/fsck.exfat)"
+        EXFAT_DUMP="$(realpath ./dump/dump.exfat)"
+
+        # cd to tmp dir as the rootfs the runner is running in might not support LFS
+        pushd "$(mktemp -d -p /dev/shm)"
+        TMP_DIR="$(pwd)"
+        CWD_FSTYPE="$(stat -fc '%T' .)"
+
+        # assert that cwd is indeed tmpfs
+        if [ "$CWD_FSTYPE" != "tmpfs" ]
+        then
+          echo "FSTYPE of temp dir: ${CWD_FSTYPE}!" >&2
+          exit 1
+        fi
+
+        for pt in none mbr gpt
+        do
+          for bs in 512 4096
+          do
+            for vs in $TEST_VOLUMESIZES
+            do
+              echo "========== $pt $bs $vs =========="
+              truncate -s 0 img && truncate -s "$vs" img
+              img_size="$(stat -c '%s' img)"
+
+              if [ "$bs" -gt 512 ] && [ "$img_size" -lt 134217728 ]
+              then
+                continue
+              fi
+
+              sudo losetup -Pb "$bs" /dev/loop22 img
+
+              if [ "$pt" == "mbr" ] && [ "$img_size" -ge 2199023255552 ]
+              then
+                set +e
+                sudo valgrind --error-exitcode=32 "$EXFAT_MKFS" "-fP$pt" /dev/loop22
+                [ $? -eq 32 ] && exit 1 || true
+                sudo valgrind --error-exitcode=32 "$EXFAT_MKFS" "-fCP$pt" /dev/loop22
+                [ $? -eq 32 ] && exit 1 || true
+                set -e
+              else
+                if [ "$img_size" -le 536870912 ]
+                then
+                  sudo valgrind --error-exitcode=1 "$EXFAT_MKFS" "-fP$pt" /dev/loop22
+                  sudo valgrind --error-exitcode=1 "$EXFAT_MKFS" "-fCP$pt" /dev/loop22
+                fi
+                sudo valgrind --error-exitcode=1 "$EXFAT_MKFS" "-P$pt" /dev/loop22
+                sudo valgrind --error-exitcode=1 "$EXFAT_MKFS" "-CP$pt" /dev/loop22
+
+                if [ "$pt" == none ]
+                then
+                  loop=/dev/loop22
+                else
+                  loop=/dev/loop22p1
+                fi
+
+                sudo valgrind --error-exitcode=1 "$EXFAT_DUMP" "$loop"
+                sudo valgrind --error-exitcode=1 "$EXFAT_FSCK" "$loop"
+              fi
+
+              sudo losetup -d /dev/loop22
+            done
+          done
+        done
+
+        popd
+        rm -rf "$TMP_DIR"
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: mips-linux-gnu
+            qemu: qemu-system-mips
+            gcc:  gcc-mips-linux-gnu
+            run:  qemu-mips
+            name: mips
+          - host: x86_64-linux-gnu
+            qemu: qemu-system-x86
+            gcc:  gcc-x86-64-linux-gnu
+            run:  qemu-x86_64
+            name: x86_64
+          - host: i686-linux-gnu
+            qemu: qemu-system-x86
+            gcc:  gcc-i686-linux-gnu
+            run:  qemu-i386
+            name: i686
+    steps:
+    - name: Install packages
+      run: |
+        sudo apt-get --update --quiet --yes install \
+             linux-headers-$(uname -r) xz-utils curl \
+             cryptsetup parted dosfstools e2fsprogs btrfs-progs f2fs-tools ntfs-3g xfsprogs \
+             ${{ matrix.gcc }} ${{ matrix.qemu }} \
+             qemu-user qemu-utils
         sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
-    - name: build test & install exfatprogs
+    - name: Build libblkid
+      shell: bash
       run: |
-        ./autogen.sh > /dev/null
-        ./configure > /dev/null
-        make -j$((`nproc`+1)) > /dev/null
-        sudo make install > /dev/null
-        make distclean > /dev/null
-        ./configure --host=mips-linux-gnu CFLAGS=--static > /dev/null
-        make -j$((`nproc`+1)) > /dev/null
+        set -e
+        curl "$UTIL_LINUX_SRC" | xzcat | tar xf -
+        pushd util-linux-*
+
+        ./configure --host=${{ matrix.host }} --prefix=/usr/${{ matrix.host }}/local \
+          --disable-shared --enable-static --disable-all-programs --enable-libblkid
+        make -j$((`nproc`+1))
+        sudo make -j$((`nproc`+1)) install
+        make -j$((`nproc`+1)) distclean
+
+        ./configure --disable-all-programs --enable-libblkid
+        make -j$((`nproc`+1))
+        sudo make -j$((`nproc`+1)) install
+
+        rm -rf "$(realpath .)"
+        popd
+    - uses: actions/checkout@v6
+    - name: Bootstrap build system
+      run: ./autogen.sh
+    - name: Test building exfatprogs on arbitrary directory
+      shell: bash
+      run: |
+        set -e
+        CONFIG_SCRIPT="$(realpath ./configure)"
+
+        pushd "$(mktemp -d)"
+        BUILD_DIR="$(pwd)"
+        "${CONFIG_SCRIPT}"
+        make -j$((`nproc`+1))
+        sudo make install
+        popd
+
+        rm -rf "$BUILD_DIR"
+    - name: Build exfatprogs for test target
+      env:
+        CFLAGS: --static
+        PKG_CONFIG_PATH: /usr/${{ matrix.host }}/local/lib/pkgconfig
+      run: |
+        ./configure --host=${{ matrix.host }}
+        make -j$((`nproc`+1))
+
+    - name: Test foreign filesystem detection
+      env:
+        EXFAT_TTY_OVERRIDE: 1
+      shell: bash
+      run: |
+        set -e
+
+        EXFAT_MKFS="$(realpath ./mkfs/mkfs.exfat)"
+
+        pushd "$(mktemp -d)"
+
+        declare -a arr=${{ env.FOREIGN_FS }}
+        for fs_cmd in "${arr[@]}"
+        do
+          truncate -s 0 img && truncate -s 1G img
+          echo === $fs_cmd ===
+          eval $fs_cmd
+
+          if "$EXFAT_MKFS" img
+          then
+            echo "mkfs.exfat overwrote existing fs !!!" >&2
+            exit 1
+          fi
+        done
+
+        rm -rf "$(realpath .)"
+        popd
+
     - name: run fsck repair testcases
       run: |
-        cd tests
-        export FSCK1="qemu-mips ../fsck/fsck.exfat"
+        pushd tests
+        export FSCK1="${{ matrix.run }} ../fsck/fsck.exfat"
         export FSCK2="fsck.exfat"
         sudo -E ./test_fsck.sh
         export FSCK1="fsck.exfat"
-        export FSCK2="qemu-mips ../fsck/fsck.exfat"
+        export FSCK2="${{ matrix.run }} ../fsck/fsck.exfat"
         sudo -E ./test_fsck.sh
-    - name: create file/director test
+        popd
+    - name: dentry creation/deletion stress test
+      shell: bash
       run: |
+        set -e
         sudo modprobe exfat
         sudo mkdir -p /mnt/test
         truncate -s 10G test.img
         sudo losetup /dev/loop22 test.img
-        sudo mkfs.exfat /dev/loop22
+        sudo ${{ matrix.run }} ./mkfs/mkfs.exfat -vfC /dev/loop22
         sudo mount -t exfat /dev/loop22 /mnt/test/
-        cd /mnt/test/
-        i=1;while [ $i -le 10000 ];do sudo touch file$i;if [ $? != 0 ]; then exit 1; fi; i=$(($i + 1));done
-        sync
-        sudo rm -rf *
-        i=1;while [ $i -le 10000 ];do sudo mkdir dir$i;if [ $? != 0 ]; then exit 1; fi; i=$(($i + 1));done
-        sync
-        sudo rm -rf *
-        i=1;while [ $i -le 10000 ];do sudo touch file$i;if [ $? != 0 ]; then exit 1; fi; i=$(($i + 1));done
-        i=1;while [ $i -le 10000 ];do sudo mkdir dir$i;if [ $? != 0 ]; then exit 1; fi; i=$(($i + 1));done
-        sync
-        sudo fsck.exfat /dev/loop22
-        sudo find . -delete
-        sudo fsck.exfat /dev/loop22
-        cd -
+        pushd /mnt/test/
+        cat << EOF | sudo bash
+          set -e
+
+          for (( i = 0; i < 10000; i++ ))
+          do
+            touch file\$i
+          done
+          sync
+          find -mindepth 1 -delete
+          for (( i = 0; i < 10000; i++ ))
+          do
+            mkdir dir\$i
+          done
+          sync
+          find -mindepth 1 -delete
+
+          for (( i = 0; i < 10000; i++ ))
+          do
+            touch file\$i
+          done
+          for (( i = 0; i < 10000; i++ ))
+          do
+            mkdir dir\$i
+          done
+          sync
+        EOF
+        popd
+        sudo ${{ matrix.run }} ./fsck/fsck.exfat /dev/loop22
+        sudo find /mnt/test/ -mindepth 1 -delete
+        sudo umount /mnt/test/
+        sudo ${{ matrix.run }} ./fsck/fsck.exfat /dev/loop22
+        sudo losetup -d /dev/loop22
+        rm -f test.img
+
+    - name: generate large images for Windows runners
+      shell: bash
+      id: images
+      run: |
+        set -e
+
+        EXFAT_MKFS="$(realpath ./mkfs/mkfs.exfat)"
+        EXFAT_FSCK="$(realpath ./fsck/fsck.exfat)"
+        EXFAT_DUMP="$(realpath ./dump/dump.exfat)"
+
+        # cd to tmp dir as the rootfs the runner is running in might not support LFS
+        pushd "$(mktemp -d -p /dev/shm)"
+        CWD_FSTYPE="$(stat -fc '%T' .)"
+
+        # assert that cwd is indeed tmpfs
+        if [ "$CWD_FSTYPE" != "tmpfs" ]
+        then
+          echo "FSTYPE of temp dir: ${CWD_FSTYPE}!" >&2
+          exit 1
+        fi
+
+        mkdir "images-${{ matrix.name }}" && pushd "images-${{ matrix.name }}"
+        for pt in $TEST_PART_TYPES
+        do
+          mkdir "$pt" && pushd "$pt"
+
+          for bs in $TEST_BLOCKSIZES
+          do
+            mkdir "$bs" && pushd "$bs"
+
+            for vs in $TEST_VOLUMESIZES
+            do
+              img_a="exfat-$vs.img"
+              img_b="exfat-$vs.vhdx"
+
+              # fill the first 2MB with random data to see if mkfs.exfat leaves
+              # any garbage that confuses EXFAT.sys driver
+              dd iflag=fullblock if=/dev/urandom bs=2M count=1 of="$img_a" conv=notrunc status=none
+
+              # truncate up to the volume size
+              truncate -s "$vs" "$img_a"
+              img_size="$(stat -c '%s' "$img_a")"
+              if [ "$pt" == "mbr" ] && [ "$img_size" -ge 2199023255552 ]
+              then
+                expected=false
+              else
+                expected=true
+              fi
+              echo "========== $pt $img_size expected to succeed: $expected =========="
+
+              sudo losetup -Pb "$bs" /dev/loop22 "$img_a"
+              sudo blockdev --report /dev/loop22
+              if sudo ${{ matrix.run }} "$EXFAT_MKFS" -vP$pt /dev/loop22
+              then
+                if ! "$expected"
+                then
+                  # MBR created on 2TiB or larger. This shouldn't happen.
+                  echo "MBR created on $img_size bytes device" >&2
+                  exit 1
+                fi
+              elif ! "$expected"
+              then
+                sudo losetup -d /dev/loop22
+                rm -f "$img_a"
+                continue
+              else
+                exit 1
+              fi
+
+              sudo ${{ matrix.run }} "$EXFAT_MKFS" -CP$pt /dev/loop22
+              sudo blockdev --report /dev/loop22*
+
+              sudo ${{ matrix.run }} "$EXFAT_FSCK" /dev/loop22p1
+
+              sudo mount -t exfat /dev/loop22p1 /mnt/test/
+              sudo mkdir /mnt/test/a
+              echo "$TEST_MAGIC" | sudo tee /mnt/test/a/b > /dev/null
+              sudo umount /mnt/test/
+
+              sudo ${{ matrix.run }} "$EXFAT_FSCK" /dev/loop22p1
+              sudo ${{ matrix.run }} "$EXFAT_DUMP" /dev/loop22p1 | grep -iE 'Bytes per Sector:(\s+)?'"$bs" > /dev/null
+              sudo losetup -d /dev/loop22
+
+              qemu-img convert -f raw -O vhdx "$img_a" "$img_b"
+              rm -f "$img_a"
+            done
+            popd
+          done
+          popd
+        done
+        popd
+
+        tar -cf "images-${{ matrix.name }}.tar" "images-${{ matrix.name }}"
+        TAR_FILE="$(realpath "images-${{ matrix.name }}.tar")"
+        popd
+
+        mv -f "$TAR_FILE" .
+    - name: Stage image bundle as artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: images-${{ matrix.name }}.tar
+        path: images-${{ matrix.name }}.tar
+
+  test-windows-interop:
+    name: test generated large sparse images on Windows runners
+    needs: tests
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-latest]
+        name: [mips, i686, x86_64]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: images-${{ matrix.name }}.tar
+    - shell: bash
+      run: |
+        set -e
+
+        tar -C /c -xf images-${{ matrix.name }}.tar
+
+        for img in "/c/images-${{ matrix.name }}"/*/*/*.vhdx
+        do
+          img="$(echo "$img" | tr '/' '\\')"
+          img="C:\\${img:3}"
+
+          # mount the image and get the disk number assigned by the kernel
+          disknum=$(powershell "Mount-DiskImage \"$img\" | Select-Object -ExpandProperty Number")
+          # assign it drive letter X
+          powershell "Get-Partition -DiskNumber $disknum -PartitionNumber 1 | Set-Partition -NewDriveLetter X"
+          powershell "Get-DiskImage \"$img\""
+
+          # simple sanity check
+          powershell 'chkdsk X: /f'
+          grep "$TEST_MAGIC" /x/a/b > /dev/null
+
+          # unmount the image
+          powershell "Dismount-DiskImage \"$img\"" > /dev/null
+        done

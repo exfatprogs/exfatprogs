@@ -16,9 +16,12 @@ jobs:
     container:
       image: alpine:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Packages
-        run: apk --update add alpine-sdk autoconf libtool automake linux-headers bash xxd xz
+        run: |
+          apk --update add \
+            alpine-sdk autoconf libtool automake linux-headers bash xxd xz \
+            util-linux-dev
       - name: Autoconf and Configure
         run: ./autogen.sh && ./configure
       - name: Build
@@ -34,12 +37,12 @@ jobs:
     container:
       image: debian:unstable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Packages
         run: |
           apt-get --update --quiet --yes install \
             clang lld pkgconf xxd autoconf \
-            libtool automake make xz-utils
+            libtool automake make xz-utils libblkid-dev
       - name: Autoconf and Configure
         run: |
           export LDFLAGS="-fuse-ld=lld"

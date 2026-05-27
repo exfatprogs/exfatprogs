@@ -57,7 +57,8 @@ int main(int argc, char *argv[])
 	char label_input[VOLUME_LABEL_BUFFER_SIZE];
 	struct exfat *exfat = NULL;
 
-	init_user_input(&ui);
+	exfat_init_blk_dev_info(&bd);
+	exfat_init_user_input(&ui);
 
 	if (!setlocale(LC_CTYPE, ""))
 		exfat_err("failed to init locale/codeset\n");
@@ -126,16 +127,16 @@ int main(int argc, char *argv[])
 	/* Mode to change or display volume serial */
 	if (flags == EXFAT_GET_VOLUME_SERIAL) {
 		ret = exfat_show_volume_serial(bd.dev_fd);
-		goto close_fd_out;
+		goto out;
 	} else if (flags == EXFAT_SET_VOLUME_SERIAL) {
 		ret = exfat_set_volume_serial(&bd, &ui);
-		goto close_fd_out;
+		goto out;
 	}
 
 	exfat = exfat_alloc_exfat(&bd, NULL, NULL);
 	if (!exfat) {
 		ret = -ENOMEM;
-		goto close_fd_out;
+		goto out;
 	}
 
 	if (flags == EXFAT_GET_VOLUME_LABEL)
@@ -146,11 +147,10 @@ int main(int argc, char *argv[])
 		ret = exfat_read_volume_guid(exfat);
 	else if (flags == EXFAT_SET_VOLUME_GUID)
 		ret = exfat_set_volume_guid(exfat, ui.guid);
-
-close_fd_out:
-	close(bd.dev_fd);
-	if (exfat)
-		exfat_free_exfat(exfat);
 out:
+	exfat_deinit_blk_dev_info(&bd);
+	exfat_deinit_user_input(&ui);
+	exfat_free_exfat(exfat);
+
 	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
 }

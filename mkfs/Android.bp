@@ -6,7 +6,9 @@ cc_binary {
     srcs: [
         "mkfs.c",
         "upcase.c",
+        "crc.c",
     ],
     defaults: ["exfatprogs-defaults"],
     static_libs: ["libexfat"],
+    shared_libs: ["libext2_blkid"],
 }

@@ -49,24 +49,24 @@ static void sigint_handler(int sig)
 static int exfat_rw_FAT(struct exfat *exfat, uint32_t *list, uint32_t list_len, bool read)
 {
 	off_t offset;
-	size_t len_1, len_2;
+	bool ret;
+	const size_t len = (size_t)(list_len * sizeof(uint32_t));
 	uint32_t i;
 
 	offset = (off_t)le32_to_cpu(exfat->bs->bsx.fat_offset) << exfat->bs->bsx.sect_size_bits;
-	len_1 = (size_t)(list_len * sizeof(uint32_t));
 
 	/* Read or write with endianness conversion */
 	if (read) {
-		len_2 = exfat_read(exfat->blk_dev->dev_fd, list, len_1, offset);
-		if (len_2 != len_1)
+		ret = exfat_read_full(exfat->blk_dev->dev_fd, list, len, offset);
+		if (!ret)
 			return -EIO;
 		for (i = 0; i < list_len; i++)
 			list[i] = le32_to_cpu(list[i]);
 	} else {
 		for (i = 0; i < list_len; i++)
 			list[i] = cpu_to_le32(list[i]);
-		len_2 = exfat_write(exfat->blk_dev->dev_fd, list, len_1, offset);
-		if (len_2 != len_1)
+		ret = exfat_write_full(exfat->blk_dev->dev_fd, list, len, offset);
+		if (!ret)
 			return -EIO;
 	}
 
@@ -79,7 +79,7 @@ static int exfat_rw_FAT(struct exfat *exfat, uint32_t *list, uint32_t list_len, 
  */
 static int exfat_rw_bitmap(struct exfat *exfat, bool read)
 {
-	ssize_t rw_len = 0;
+	bool rw;
 
 	struct exfat_dentry *dentry;
 	struct exfat_lookup_filter filter = {
@@ -116,16 +116,16 @@ static int exfat_rw_bitmap(struct exfat *exfat, bool read)
 
 	/* Perform read or write operation */
 	if (read) {
-		rw_len = exfat_read(exfat->blk_dev->dev_fd, exfat->alloc_bitmap,
+		rw = exfat_read_full(exfat->blk_dev->dev_fd, exfat->alloc_bitmap,
 					exfat->disk_bitmap_size,
 					exfat_c2o(exfat, exfat->disk_bitmap_clus));
-		if (rw_len != exfat->disk_bitmap_size)
+		if (!rw)
 			return -EIO;
 	} else {
-		rw_len = exfat_write(exfat->blk_dev->dev_fd, exfat->alloc_bitmap,
+		rw = exfat_write_full(exfat->blk_dev->dev_fd, exfat->alloc_bitmap,
 					exfat->disk_bitmap_size,
 					exfat_c2o(exfat, exfat->disk_bitmap_clus));
-		if (rw_len != exfat->disk_bitmap_size)
+		if (!rw)
 			return -EIO;
 	}
 
@@ -689,16 +689,16 @@ err:
 static int exfat_rw_clu(struct exfat *exfat, void *tmp, uint32_t cluster, bool read)
 {
 	off_t offset;
-	size_t rw_len;
+	bool ret;
 
 	offset = (off_t)exfat_c2o(exfat, cluster);
 
 	if (read)
-		rw_len = exfat_read(exfat->blk_dev->dev_fd, tmp, (size_t)exfat->clus_size, offset);
+		ret = exfat_read_full(exfat->blk_dev->dev_fd, tmp, exfat->clus_size, offset);
 	else
-		rw_len = exfat_write(exfat->blk_dev->dev_fd, tmp, (size_t)exfat->clus_size, offset);
+		ret = exfat_write_full(exfat->blk_dev->dev_fd, tmp, exfat->clus_size, offset);
 
-	if (rw_len != (size_t)exfat->clus_size)
+	if (!ret)
 		return -EIO;
 
 	return 0;
@@ -967,9 +967,8 @@ int main(int argc, char *argv[])
 	bool only_show_version = false;
 	bool show_fsck_warning = true;
 
-	memset(&ui, 0, sizeof(ui));
-	memset(&bd, 0, sizeof(bd));
-	bd.dev_fd = -1;
+	exfat_init_user_input(&ui);
+	exfat_init_blk_dev_info(&bd);
 
 	/* step-0: Parameter Processing and Mode Recognition */
 
@@ -1150,8 +1149,8 @@ fsync_and_free:
 		exfat_free_exfat(defrag.exfat);
 
 out:
-	if (bd.dev_fd >= 0)
-		close(bd.dev_fd);
+	exfat_deinit_blk_dev_info(&bd);
+	exfat_deinit_user_input(&ui);
 
 	if (ret == 0) {
 		if (only_assessment)

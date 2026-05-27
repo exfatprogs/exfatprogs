@@ -216,13 +216,12 @@ static int exfat_show_fs_info(struct exfat *exfat)
 		dump_field("Bitmap size", "%llu", bitmap_len);
 
 		if (bitmap_len > EXFAT_BITMAP_SIZE(exfat->clus_count)) {
-			exfat_err("Invalid bitmap size\n");
+			exfat_err("Invalid bitmap size: %llu\n", bitmap_len);
 			return -EINVAL;
 		}
 
-		ret = exfat_read(bd->dev_fd, exfat->disk_bitmap, bitmap_len,
-				exfat_c2o(exfat, bitmap_clu));
-		if (ret < 0) {
+		if (!exfat_read_full(bd->dev_fd, exfat->disk_bitmap, bitmap_len,
+				exfat_c2o(exfat, bitmap_clu))) {
 			exfat_err("bitmap read failed: %d\n", errno);
 			return -EIO;
 		}
@@ -424,8 +423,8 @@ static int exfat_get_next_dentry_offset(struct exfat *exfat, bool is_contiguous,
 	if (offset + DENTRY_SIZE == exfat->clus_size) {
 		ret = exfat_get_next_clus(exfat, clu, &clu);
 		if (ret) {
-			exfat_err("failed to get next dentry offset 0x%lx\n",
-					*dentry_off);
+			exfat_err("failed to get next dentry offset 0x%llx\n",
+					(unsigned long long)*dentry_off);
 			return ret;
 		}
 
@@ -548,10 +547,10 @@ static void exfat_show_stream_dentry(struct exfat_dentry *ed,
 		exfat_show_cluster_chain(exfat, ed);
 }
 
-static void exfat_show_bytes(const char *name, unsigned char *bytes, int n)
+static void exfat_show_bytes(const char *name, unsigned char *bytes, size_t n)
 {
 	char buf[64];
-	int i, len = 0;
+	size_t i, len = 0;
 
 	for (i = 0; i < n && len < sizeof(buf); i++)
 		len += snprintf(buf + len, sizeof(buf) - len, "%02X", bytes[i]);
@@ -559,8 +558,8 @@ static void exfat_show_bytes(const char *name, unsigned char *bytes, int n)
 	exfat_info("%-33s  %s\n", name, buf);
 }
 
-#define dump_bytes_field(name, feild)	\
-	exfat_show_bytes("   " name ":", (unsigned char *)feild, sizeof(feild))
+#define dump_bytes_field(name, field)	\
+	exfat_show_bytes("   " name ":", (unsigned char *)(field), sizeof((field)))
 
 static void exfat_show_name_dentry(struct exfat_dentry *ed,
 		struct exfat *exfat, uint32_t flags)
@@ -648,10 +647,9 @@ static struct show_dentry show_dentry_array[] = {
 static void exfat_show_dentry(struct exfat *exfat, struct exfat_dentry *ed,
 		unsigned int index, off_t dentry_off, uint32_t flags)
 {
-	int i;
 	struct show_dentry *sd = NULL;
 
-	for (i = 0; i < sizeof(show_dentry_array) / sizeof(*sd); i++) {
+	for (size_t i = 0; i < sizeof(show_dentry_array) / sizeof(*sd); i++) {
 		if (show_dentry_array[i].type == ed->type) {
 			sd = show_dentry_array + i;
 			break;
@@ -928,7 +926,8 @@ int main(int argc, char *argv[])
 	const char *path = NULL;
 	uint32_t flags = 0;
 
-	init_user_input(&ui);
+	exfat_init_blk_dev_info(&bd);
+	exfat_init_user_input(&ui);
 	ui.writeable = false;
 
 	if (!setlocale(LC_CTYPE, ""))
@@ -975,7 +974,7 @@ int main(int argc, char *argv[])
 	exfat = exfat_alloc_exfat(&bd, NULL, NULL);
 	if (!exfat) {
 		ret = -ENOMEM;
-		goto close_dev_fd;
+		goto out;
 	}
 
 	if (path)
@@ -985,9 +984,9 @@ int main(int argc, char *argv[])
 
 	exfat_free_exfat(exfat);
 
-close_dev_fd:
-	close(bd.dev_fd);
-
 out:
+	exfat_deinit_blk_dev_info(&bd);
+	exfat_deinit_user_input(&ui);
+
 	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
 }

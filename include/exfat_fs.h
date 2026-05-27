@@ -38,9 +38,9 @@ struct exfat {
 	clus_t			clus_count;
 	unsigned int		clus_size;
 	unsigned int		sect_size;
-	char			*disk_bitmap;
-	char			*alloc_bitmap;
-	char			*ohead_bitmap;
+	unsigned char		*disk_bitmap;
+	unsigned char		*alloc_bitmap;
+	unsigned char		*ohead_bitmap;
 	clus_t			disk_bitmap_clus;
 	unsigned int		disk_bitmap_size;
 	__u16			*upcase_table;

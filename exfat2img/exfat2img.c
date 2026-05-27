@@ -21,8 +21,6 @@
 #include "exfat_fs.h"
 #include "exfat_dir.h"
 
-#define EXFAT_MAX_UPCASE_CHARS	0x10000
-
 struct exfat2img_hdr {
 	__le32	magic;
 	__le32	major_version;
@@ -46,7 +44,8 @@ enum {
 };
 
 struct exfat2img {
-	int			out_fd;
+	int			out_fd;		/* fd that we DO NOT have ownership to */
+	int			opened_fd;	/* fd that we HAVE opened and have to close */
 	bool			is_stdout;
 	off_t			stdout_offset;
 	bool			save_cc;
@@ -94,6 +93,12 @@ static void usage(const char *name)
 			##__VA_ARGS__);			\
 })
 
+static void init_exfat2img(struct exfat2img *ei)
+{
+	memset(ei, 0, sizeof(*ei));
+	ei->out_fd = ei->opened_fd = -1;
+}
+
 static void free_exfat2img(struct exfat2img *ei)
 {
 	if (ei->scan_bdesc)
@@ -102,10 +107,11 @@ static void free_exfat2img(struct exfat2img *ei)
 		exfat_free_exfat(ei->exfat);
 	if (ei->dump_cluster)
 		free(ei->dump_cluster);
-	if (ei->out_fd)
-		close(ei->out_fd);
-	if (ei->bdev.dev_fd)
-		close(ei->bdev.dev_fd);
+	if (ei->opened_fd >= 0) {
+		close(ei->opened_fd);
+		ei->opened_fd = -1;
+	}
+	exfat_deinit_blk_dev_info(&ei->bdev);
 }
 
 static int create_exfat2img(struct exfat2img *ei, const char *out_path)
@@ -129,10 +135,10 @@ static int create_exfat2img(struct exfat2img *ei, const char *out_path)
 	}
 
 	if (strcmp(out_path, "-")) {
-		ei->out_fd = open(out_path, O_CREAT | O_TRUNC | O_RDWR, 0664);
+		ei->opened_fd = ei->out_fd = open(out_path, O_CREAT | O_TRUNC | O_RDWR, 0664);
 	} else {
 		ei->is_stdout = true;
-		ei->out_fd = fileno(stdout);
+		ei->out_fd = STDOUT_FILENO; /* POSIX spec mandates stdout == 1 */
 		ei->save_cc = true;
 	}
 	if (ei->out_fd < 0) {
@@ -155,7 +161,7 @@ static ssize_t dump_range(struct exfat2img *ei, off_t start, off_t end)
 {
 	struct exfat *exfat = ei->exfat;
 	size_t len, total_len = 0;
-	ssize_t ret;
+	bool ret;
 
 	if (ei->is_stdout) {
 		unsigned int sc, sc_offset;
@@ -171,19 +177,22 @@ static ssize_t dump_range(struct exfat2img *ei, off_t start, off_t end)
 	}
 
 	while (start < end) {
-		len = (size_t)MIN(end - start, exfat->clus_size);
+		off_t range_delta = end - start;
 
-		ret = exfat_read(exfat->blk_dev->dev_fd,
+		range_delta = MIN(range_delta, SSIZE_MAX);
+		len = MIN((size_t)range_delta, exfat->clus_size);
+
+		ret = exfat_read_full(exfat->blk_dev->dev_fd,
 				 ei->dump_cluster, len, start);
-		if (ret != (ssize_t)len) {
+		if (!ret) {
 			exfat_err("failed to read %llu bytes at %llu\n",
 				  (unsigned long long)len,
 				  (unsigned long long)start);
 			return -EIO;
 		}
 
-		ret = pwrite(ei->out_fd, ei->dump_cluster, len, start);
-		if (ret != (ssize_t)len) {
+		ret = exfat_write_full(ei->out_fd, ei->dump_cluster, len, start);
+		if (!ret) {
 			exfat_err("failed to write %llu bytes at %llu\n",
 				  (unsigned long long)len,
 				  (unsigned long long)start);
@@ -544,7 +553,7 @@ static int dump_bytes_to_stdout(struct exfat2img *ei,
 {
 	struct exfat *exfat = ei->exfat;
 	size_t len;
-	ssize_t ret;
+	bool ret;
 
 	if (start != ei->stdout_offset) {
 		exfat_err("try to skip for stdout at %llu, expected: %llu\n",
@@ -555,17 +564,17 @@ static int dump_bytes_to_stdout(struct exfat2img *ei,
 
 	while (start < end_excl) {
 		len = (size_t)MIN(end_excl - start, exfat->clus_size);
-		ret = exfat_read(exfat->blk_dev->dev_fd, ei->dump_cluster,
+		ret = exfat_read_full(exfat->blk_dev->dev_fd, ei->dump_cluster,
 				 len, start);
-		if (ret != (ssize_t)len) {
+		if (!ret) {
 			exfat_err("failed to read %llu bytes at %llu\n",
 				  (unsigned long long)len,
 				  (unsigned long long)start);
 			return -EIO;
 		}
 
-		ret = write(ei->out_fd, ei->dump_cluster, len);
-		if (ret != (ssize_t)len) {
+		ret = exfat_write_full(ei->out_fd, ei->dump_cluster, len, -1);
+		if (!ret) {
 			exfat_err("failed to write %llu bytes at %llu\n",
 				  (unsigned long long)len,
 				  (unsigned long long)start);
@@ -610,7 +619,7 @@ static int dump_clusters_to_stdout(struct exfat2img *ei,
 			buf[0] = cc;
 			*((__le32 *)&buf[1]) =
 				cpu_to_le32(cc_clu_count);
-			if (write(ei->out_fd, buf, cc_len) != (ssize_t)cc_len) {
+			if (!exfat_write_full(ei->out_fd, buf, cc_len, -1)) {
 				exfat_err("failed to write cc %d : %u\n for %u ~ %u clusters\n",
 					  cc, cc_clu_count,
 					  start_clu, start_clu + cc_clu_count - 1);
@@ -709,7 +718,7 @@ static int dump_header(struct exfat2img *ei)
 	ei_hdr.cluster_size = cpu_to_le32(exfat->clus_size);
 	ei_hdr.cluster_count = cpu_to_le32(exfat->clus_count);
 
-	if (write(ei->out_fd, &ei_hdr, sizeof(ei_hdr)) != (ssize_t)sizeof(ei_hdr)) {
+	if (!exfat_write_full(ei->out_fd, &ei_hdr, sizeof(ei_hdr), -1)) {
 		exfat_err("failed to write exfat2img header\n");
 		return -EIO;
 	}
@@ -722,7 +731,7 @@ static ssize_t read_stream(int fd, void *buf, size_t len)
 	ssize_t ret;
 
 	while (read_len < len) {
-		ret = read(fd, buf, len - read_len);
+		ret = exfat_read(fd, buf, len - read_len, -1);
 		if (ret < 0) {
 			if (errno != -EAGAIN && errno != -EINTR)
 				return -1;
@@ -748,7 +757,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 	off_t in_start_off;
 	size_t len;
 
-	in_fd = fileno(stdin);
+	in_fd = STDIN_FILENO; /* POSIX spec mandates stdin == 0 */
 	if (in_fd < 0) {
 		exfat_err("failed to get fd from stdin\n");
 		return in_fd;
@@ -786,8 +795,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 			goto out;
 		}
 
-		if (pwrite(ei->out_fd, ei->dump_cluster, len, out_start_off)
-		    != (ssize_t)len) {
+		if (!exfat_write_full(ei->out_fd, ei->dump_cluster, len, out_start_off)) {
 			exfat_err("failed to write first meta region. %llu ~ %llu\n",
 				  (unsigned long long)out_start_off,
 				  (unsigned long long)out_start_off + len);
@@ -840,8 +848,8 @@ static int restore_from_stdin(struct exfat2img *ei)
 					ret = -EIO;
 					goto out;
 				}
-				if (pwrite(ei->out_fd, ei->dump_cluster,
-					   clus_size, out_start_off) != (ssize_t)clus_size) {
+				if (!exfat_write_full(ei->out_fd, ei->dump_cluster,
+						      clus_size, out_start_off)) {
 					exfat_err("failed to write range %llu ~ %llu\n",
 						  (unsigned long long)out_start_off,
 						  (unsigned long long)out_start_off + clus_size);
@@ -918,13 +926,15 @@ int main(int argc, char * const argv[])
 		blkdev_path = in_path;
 	}
 
-	memset(&ui, 0, sizeof(ui));
+	init_exfat2img(&ei);
+	exfat_init_user_input(&ui);
 	ui.dev_name = blkdev_path;
 	if (restore)
 		ui.writeable = true;
 	else
 		ui.writeable = false;
 
+	exfat_init_blk_dev_info(&ei.bdev);
 	if (exfat_get_blk_dev_info(&ui, &ei.bdev)) {
 		exfat_err("failed to open %s\n", ui.dev_name);
 		return EXIT_FAILURE;
@@ -969,13 +979,20 @@ int main(int argc, char * const argv[])
 		err = dump_to_stdout(&ei);
 		if (err)
 			goto out;
+
+		/*
+		 * Just do it: the stdout might have been redirected to a file or blockdev after
+		 * all. This shouldn't hurt anything even if it fails because out_fd is actually a
+		 * pipe or chardev(EINVAL). If stdout was redirected to a file and it fails, well,
+		 * that's on the user who used shell redirection to do such a critical operation.
+		 */
+		fsync(ei.out_fd);
 	} else {
 		err = fsync(ei.out_fd);
 		if (err) {
 			exfat_err("failed to fsync %s. %d\n", out_path, errno);
 			goto out;
 		}
-		close(ei.out_fd);
 	}
 
 	printf("%ld files found, %ld directories dumped, %llu kbytes written\n",
@@ -985,5 +1002,6 @@ int main(int argc, char * const argv[])
 
 out:
 	free_exfat2img(&ei);
+	exfat_deinit_user_input(&ui);
 	return err == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

@@ -5,6 +5,8 @@ mkfs.exfat \- create an exFAT filesystem
 .SH SYNOPSIS
 .B mkfs.exfat
 [
+.B \-CfFKqv
+] [
 .B \-b
 .I boundary_alignment
 ] [
@@ -14,25 +16,24 @@ mkfs.exfat \- create an exFAT filesystem
 .B \-c
 .I cluster_size
 ] [
-.B \-f
-] [
-.B \-C
-] [
-.B \-h
-] [
 .B \-L
 .I volume_label
 ] [
 .B \-U
 .I volume_guid
 ] [
+.B \-P
+.I type
+] [
 .B \-\-pack\-bitmap
 ] [
-.B \-v
+.B \-\-upcase\fR=\fIfile\fR
 ]
 .I device
 .br
 .B mkfs.exfat \-V
+.br
+.B mkfs.exfat \-h
 .SH DESCRIPTION
 .B mkfs.exfat
 creates an exFAT filesystem by writing on a special
@@ -54,7 +55,7 @@ SCSI disk, use:
 Specifies the alignment for the FAT and the start of the cluster heap.
 The \fIalignment\fR argument is specified in bytes or may be specified with
 \fBm\fR/\fBM\fR suffix for mebibytes or \fBk\fR/\fBK\fR suffix for kibibytes
-and should be a power of two.
+and must be a power of two.
 Some media like SD cards need this for optimal performance and endurance,
 in which case \fIalignment\fR should be set to half of the card's native
 boundary unit size.
@@ -85,6 +86,9 @@ The \fIsize\fR argument is specified in bytes or may be specified with
 bytes.
 The default value is the sector size reported by the device, or 512 bytes if the
 device sector size cannot be determined.
+An exFAT volume formatted with the sector size value other than that of the
+device is unusable in most operating systems. \fBDO NOT use this option\fR
+unless you're absolutely sure that you know what you're doing.
 .TP
 .BR \-c ", " \-\-cluster\-size =\fIsize\fR
 Specifies the cluster size of the exFAT file system.
@@ -97,7 +101,8 @@ center;
 cb1s6cb,nnn.
 Card Capacity Range	Cluster Size
 _
-	\[<=]256 MiB	4 KiB
+\<7 MiB		512 B
+\[<=]256 MiB		4 KiB
 >256 MiB	\[<=]32 GiB	32 KiB
 >32 GiB		128 KiB
 .TE
@@ -107,14 +112,44 @@ Performs a full format.
 This zeros the entire disk device while creating the exFAT filesystem.
 .TE
 .TP
+.BR \-F ", " \-\-force
+Allow overwriting a device that already contains a disk signature. Without this
+option, mkfs.exfat refuses to format when libblkid detects a foreign disk
+signature on the target device. This safeguard is in effect only when
+\fBmkfs.exfat\fR is run from a terminal.
+.TP
 .BR \-K ", " \-\-no\-discard
 Do not attempt to discard blocks.
+.TP
+.BR \-P ", " \-\-partition\-table =\fIauto\fP|\fInone\fP|\fImbr\fP|\fIgpt\fP
+Specifies the type of partition table to set up. If set to \fIauto\fR, which is
+the default, the characteristics of the underlying device will be detected to
+determine whether a partition table is required for Microsoft Windows systems to
+be able to recognise the new volume. If MBR is selected, \fBmkfs.exfat\fR will
+set up the volume with an MBR partition entry that covers the entire device
+including LBA 0 that contains the MBR itself. This is known as a recursive
+partition and is similar to what \fBmkfs.fat\fR creates when needed. If GPT is
+selected, \fBmkfs.exfat\fR creates regular GPT structures with one partition
+with all the available space allocated, and the new exFAT volume will be created
+on the partition. The partition will be aligned to the boundary unit specified
+with \fB\-b\fR option and must be at least 1 MiB.
+
+To override the default behaviour, set to \fInone\fR to disable partition table
+creation and set to \fImbr\fR or \fIgpt\fR to force \fBmkfs.exfat\fR to create
+MBR or GPT, respectively.
+.TP
+.BR \-\-bootcode\-msg =\fImessage\fR
+Specifies the message the x86 real mode MBR bootstrap program displays. If the
+message is not terminated with \\r\\n(CRLF) newline characters, the newline
+characters will be appended to the given message. Use \fBprintf\fR or \fBecho\fR
+command to escape newline characters from command line.
 .TP
 .BR \-C ", " \-\-verify\-written
 Verify filesystem metadata by reading it back after writing.
 This option performs read-back verification of critical exFAT metadata
 (boot record, FAT, allocation bitmap, upcase table, and root directory)
 after each formatting stage.
+When used with \fB\-f\fR option, also written zeros are also verified.
 It is useful for detecting broken storage devices or devices that falsely
 report successful writes without actually persisting data.
 This option may slightly degrade formatting performance and is therefore
@@ -150,6 +185,14 @@ allocation unit with the FAT.
 If there is insufficient space for the bitmap there, then this option will have
 no effect, and the bitmap will be aligned at the boundary as by default.
 .TP
+.B \-\-upcase=\fIfile\fR
+Format the volume with the specified up-case table file in binary format. No
+additional conversion or validation of the file is done by \fBmkfs.exfat\fR and
+the binary contents of the file is written to the volume as-is. This is useful
+for testing and debugging exFAT file system drivers. The scripts and example
+up-case tables useful for this option are located in \fI/usr/libexec\fR and
+\fI/usr/share/doc/exfatprogs\fR.
+.TP
 .BR \-q ", " \-\-quiet
 Prints only error messages while creating the exFAT filesystem.
 .TP
@@ -161,3 +204,4 @@ Prints the version number and exits.
 .SH SEE ALSO
 .BR mkfs (8),
 .BR mount (8),
+.BR mkfs.fat (8)

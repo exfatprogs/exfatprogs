@@ -2,9 +2,10 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = lib mkfs fsck tune label dump exfat2img
+SUBDIRS = lib mkfs fsck tune label dump exfat2img upcase dosattr
 
 # manpages
+dist_man1_MANS =
 dist_man8_MANS =		\
 	manpages/fsck.exfat.8	\
 	manpages/tune.exfat.8	\
@@ -26,3 +27,10 @@ EXTRA_DIST =			\
 	dump/Android.bp		\
 	exfat2img/Android.bp	\
 	README.md
+
+if ENABLE_DOSATTR
+dist_man1_MANS +=		\
+	manpages/lsdosattr.1	\
+	manpages/chdosattr.1
+
+endif
