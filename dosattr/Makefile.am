@@ -5,6 +5,8 @@ chdosattr_LDADD = $(top_builddir)/lib/libexfat.a
 
 sbin_PROGRAMS = lsdosattr chdosattr
 
+noinst_HEADERS = dosattr.h
+
 lsdosattr_SOURCES = lsdosattr.c
 chdosattr_SOURCES = chdosattr.c
 endif
