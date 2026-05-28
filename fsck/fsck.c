@@ -1766,18 +1766,6 @@ static void exfat_show_info(struct exfat_fsck *fsck, const char *dev_name)
 			exfat_stat.fixed_count);
 }
 
-static clus_t count_bitmap_set_bits(struct exfat *exfat)
-{
-	clus_t count = 0;
-	size_t i, bytes = exfat->disk_bitmap_size;
-
-	for (i = 0; i + sizeof(uint32_t) <= bytes; i += sizeof(uint32_t))
-		count += __builtin_popcount(*(uint32_t *)(exfat->disk_bitmap + i));
-	for (; i < bytes; i++)
-		count += __builtin_popcount(exfat->disk_bitmap[i]);
-	return count;
-}
-
 static int do_put_mbr(const struct exfat_blk_dev *bd, struct pbr *bs, const bool recursive)
 {
 	int ret = 0;
@@ -2078,7 +2066,8 @@ int main(int argc, char * const argv[])
 	}
 
 	if (exfat_fsck.options & FSCK_OPTS_PROGRESS_BAR) {
-		used_clus_count = count_bitmap_set_bits(exfat_fsck.exfat);
+		used_clus_count = exfat_count_used_clusters(exfat_fsck.exfat->disk_bitmap,
+				(size_t)exfat_fsck.exfat->disk_bitmap_size);
 		progress_init(&exfat_fsck.progress_bar, 0, used_clus_count, 0);
 	}
 
