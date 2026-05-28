@@ -10,11 +10,11 @@ under the GNU General Public License Version 2.
 ## Building exfatprogs
 Install prerequisite packages:
 ```
-For Ubuntu:
-    sudo apt-get install autoconf libtool pkg-config
+For Debian, Ubuntu:
+    sudo apt-get install autoconf libtool automake make pkgconf libblkid-dev
 
 For Fedora, RHEL:
-    sudo yum install autoconf automake libtool
+    sudo dnf install autoconf automake libtool libblkid-devel
 ```
 
 Build steps:
