@@ -3,7 +3,7 @@ AM_CFLAGS = -Wall -Wextra -include $(top_builddir)/config.h -I$(top_srcdir)/incl
 lsdosattr_LDADD = $(top_builddir)/lib/libexfat.a
 chdosattr_LDADD = $(top_builddir)/lib/libexfat.a
 
-sbin_PROGRAMS = lsdosattr chdosattr
+bin_PROGRAMS = lsdosattr chdosattr
 
 noinst_HEADERS = dosattr.h
 
