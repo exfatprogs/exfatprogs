@@ -24,6 +24,8 @@ jobs:
             util-linux-dev
       - name: Autoconf and Configure
         run: ./autogen.sh && ./configure
+      - name: Distcheck
+        run: make distcheck
       - name: Build
         run: make -j$((`nproc`+1))
       - name: Install
@@ -47,6 +49,8 @@ jobs:
         run: |
           export LDFLAGS="-fuse-ld=lld"
           ./autogen.sh && ./configure
+      - name: Distcheck
+        run: make distcheck
       - name: Build
         run:  make -j$((`nproc`+1))
       - name: Install
