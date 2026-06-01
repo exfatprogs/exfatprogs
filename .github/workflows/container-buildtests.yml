@@ -5,6 +5,14 @@ on:
     branches:
       - master
       - exfat-next
+    paths-ignore:
+      - 'manpages/**'
+      - '**.md'
+      - '**.txt'
+      - '.editorconfig'
+      - '.gitignore'
+      - 'COPYING'
+      - 'NEWS'
   pull_request:
     branches:
       - master
