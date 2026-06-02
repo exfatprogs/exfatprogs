@@ -66,9 +66,8 @@ jobs:
     - name: Install packages
       run: |
         sudo apt-get --update --quiet --yes install \
-             linux-headers-$(uname -r) xz-utils \
-             valgrind libblkid-dev ${{ matrix.cc }}
-        sudo apt-get install -y linux-modules-extra-$(uname -r)
+             linux-headers-$(uname -r) linux-modules-extra-$(uname -r) \
+             xz-utils valgrind libblkid-dev ${{ matrix.cc }}
     - name: Build
       run: |
         export "CC=${{ matrix.cc }}"
@@ -180,11 +179,10 @@ jobs:
     - name: Install packages
       run: |
         sudo apt-get --update --quiet --yes install \
-             linux-headers-$(uname -r) xz-utils curl \
-             cryptsetup parted dosfstools e2fsprogs btrfs-progs f2fs-tools ntfs-3g xfsprogs \
-             ${{ matrix.gcc }} ${{ matrix.qemu }} \
+             linux-headers-$(uname -r) linux-modules-extra-$(uname -r) xz-utils curl \
+             cryptsetup parted dosfstools e2fsprogs btrfs-progs f2fs-tools ntfs-3g \
+             xfsprogs ${{ matrix.gcc }} ${{ matrix.qemu }} \
              qemu-user qemu-utils
-        sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
     - name: Build libblkid
