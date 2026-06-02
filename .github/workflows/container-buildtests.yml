@@ -1,14 +1,24 @@
 name: Container Buildtests
 
+# This workflow includes a make distcheck,
+# thus we execute it also on most non-code changes
+# to catch e.g. files missing in the generated
+# make dist tarball.
 on:
   push:
     branches:
       - master
       - exfat-next
+    paths-ignore:
+      - '**.md'
+      - 'NEWS'
   pull_request:
     branches:
       - master
       - exfat-next
+    paths-ignore:
+      - '**.md'
+      - 'NEWS'
 
 jobs:
   container-build-alpine:

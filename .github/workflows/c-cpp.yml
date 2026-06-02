@@ -1,14 +1,27 @@
 name: C/C++ CI
 
+# Try to avoid running this rather big matrix build workflow
+# on non-code changes. The smaller build tests in container-buildtests.yml
+# include a make distcheck and run for almost all changes.
 on:
   push:
     branches:
-    - master
-    - exfat-next
+      - master
+      - exfat-next
+    paths-ignore:
+      - 'manpages/**'
+      - '**.md'
+      - '**.txt'
+      - 'NEWS'
   pull_request:
     branches:
-    - master
-    - exfat-next
+      - master
+      - exfat-next
+    paths-ignore:
+      - 'manpages/**'
+      - '**.md'
+      - '**.txt'
+      - 'NEWS'
 
 env:
   TEST_PART_TYPES: mbr gpt
