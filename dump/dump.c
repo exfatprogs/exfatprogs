@@ -733,7 +733,7 @@ static int exfat_create_inode(struct exfat *exfat,
 		}
 
 		inode->dentry_set[i] = *dentry;
-		if (dentry->type == EXFAT_NAME)
+		if (dentry->type == EXFAT_NAME && i < 2 + MAX_NAME_DENTRIES)
 			memcpy(inode->name + (i - 2) * ENTRY_NAME_MAX,
 					dentry->name_unicode,
 					sizeof(dentry->name_unicode));
