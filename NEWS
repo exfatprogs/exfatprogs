@@ -1,3 +1,13 @@
+exfatprogs 1.4.2 - released 2026-06-15
+======================================
+
+CHANGES :
+ * exfatprogs: install lsdosattr and chdosattr in /bin instead of
+   /sbin.
+
+BUG FIXES :
+ * dump.exfat: prevent heap buffer overflow in name parsing.
+
 exfatprogs 1.4.1 - released 2026-05-28
 ======================================
 
