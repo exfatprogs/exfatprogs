@@ -5,6 +5,14 @@ on:
     branches:
       - master
       - exfat-next
+    paths-ignore:
+      - 'manpages/**'
+      - '**.md'
+      - '**.txt'
+      - '.editorconfig'
+      - '.gitignore'
+      - 'COPYING'
+      - 'NEWS'
   pull_request:
     branches:
       - master
@@ -24,6 +32,8 @@ jobs:
             util-linux-dev
       - name: Autoconf and Configure
         run: ./autogen.sh && ./configure
+      - name: Distcheck
+        run: make -j "$(nproc)" distcheck
       - name: Build
         run: make -j$((`nproc`+1))
       - name: Install
@@ -47,6 +57,8 @@ jobs:
         run: |
           export LDFLAGS="-fuse-ld=lld"
           ./autogen.sh && ./configure
+      - name: Distcheck
+        run: make -j "$(nproc)" distcheck
       - name: Build
         run:  make -j$((`nproc`+1))
       - name: Install

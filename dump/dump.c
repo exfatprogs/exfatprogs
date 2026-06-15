@@ -33,22 +33,6 @@
 #define dump_dentry_field_wrap(fmt, ...)	\
 	exfat_info("   %-30s  " fmt "\n", "", ##__VA_ARGS__)
 
-static const unsigned char used_bit[] = {
-	0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4, 1, 2, 2, 3,/*  0 ~  19*/
-	2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5, 1, 2, 2, 3, 2, 3, 3, 4,/* 20 ~  39*/
-	2, 3, 3, 4, 3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5,/* 40 ~  59*/
-	4, 5, 5, 6, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4, 3, 4, 4, 5,/* 60 ~  79*/
-	2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 2, 3, 3, 4,/* 80 ~  99*/
-	3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6,/*100 ~ 119*/
-	4, 5, 5, 6, 5, 6, 6, 7, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 3, 4,/*120 ~ 139*/
-	3, 4, 4, 5, 2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6,/*140 ~ 159*/
-	2, 3, 3, 4, 3, 4, 4, 5, 3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5,/*160 ~ 179*/
-	4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7, 2, 3, 3, 4, 3, 4, 4, 5,/*180 ~ 199*/
-	3, 4, 4, 5, 4, 5, 5, 6, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6,/*200 ~ 219*/
-	5, 6, 6, 7, 3, 4, 4, 5, 4, 5, 5, 6, 4, 5, 5, 6, 5, 6, 6, 7,/*220 ~ 239*/
-	4, 5, 5, 6, 5, 6, 6, 7, 5, 6, 6, 7, 6, 7, 7, 8             /*240 ~ 255*/
-};
-
 static void usage(void)
 {
 	fprintf(stderr, "Usage: dump.exfat\n");
@@ -74,18 +58,6 @@ static struct option opts[] = {
 	{"?",			no_argument,		NULL,	'?' },
 	{NULL,			0,			NULL,	 0  }
 };
-
-static unsigned int exfat_count_used_clusters(unsigned char *bitmap,
-		unsigned long long bitmap_len)
-{
-	unsigned int count = 0;
-	unsigned long long i;
-
-	for (i = 0; i < bitmap_len; i++)
-		count += used_bit[bitmap[i]];
-
-	return count;
-}
 
 static int exfat_read_dentry(struct exfat *exfat, struct exfat_inode *inode,
 		uint8_t type, struct exfat_dentry *dentry, off_t *dentry_off)
@@ -226,9 +198,7 @@ static int exfat_show_fs_info(struct exfat *exfat)
 			return -EIO;
 		}
 
-		used_clus = exfat_count_used_clusters(
-				(unsigned char *)exfat->disk_bitmap,
-				bitmap_len);
+		used_clus = exfat_count_used_clusters(exfat->disk_bitmap, (size_t)bitmap_len);
 
 		exfat_info("\n---------------- Show the statistics ----------------\n");
 		dump_field("Cluster size", "%u", bd->cluster_size);
@@ -763,7 +733,7 @@ static int exfat_create_inode(struct exfat *exfat,
 		}
 
 		inode->dentry_set[i] = *dentry;
-		if (dentry->type == EXFAT_NAME)
+		if (dentry->type == EXFAT_NAME && i < 2 + MAX_NAME_DENTRIES)
 			memcpy(inode->name + (i - 2) * ENTRY_NAME_MAX,
 					dentry->name_unicode,
 					sizeof(dentry->name_unicode));
