@@ -1921,8 +1921,7 @@ int main(int argc, char * const argv[])
 
 	print_level = EXFAT_ERROR;
 
-	if (!setlocale(LC_CTYPE, ""))
-		exfat_err("failed to init locale/codeset\n");
+	setlocale(LC_ALL, "");
 
 	opterr = 0;
 	while ((c = getopt_long(argc, argv, "arynpbsPVvh", opts, NULL)) != EOF) {

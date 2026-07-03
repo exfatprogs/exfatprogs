@@ -241,8 +241,7 @@ int main(int argc, char *argv[])
 	static int c;
 	static int retval;
 
-	setlocale(LC_MESSAGES, "");
-	setlocale(LC_CTYPE, "");
+	setlocale(LC_ALL, "");
 
 	if (argc <= 1)
 		usage();

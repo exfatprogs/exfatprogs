@@ -60,8 +60,7 @@ int main(int argc, char *argv[])
 	exfat_init_blk_dev_info(&bd);
 	exfat_init_user_input(&ui);
 
-	if (!setlocale(LC_CTYPE, ""))
-		exfat_err("failed to init locale/codeset\n");
+	setlocale(LC_ALL, "");
 
 	opterr = 0;
 	while ((c = getopt_long(argc, argv, "I:iL:lU:uVvh", opts, NULL)) != EOF)

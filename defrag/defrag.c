@@ -972,8 +972,7 @@ int main(int argc, char *argv[])
 
 	/* step-0: Parameter Processing and Mode Recognition */
 
-	if (!setlocale(LC_CTYPE, ""))
-		exfat_err("failed to init locale/codeset\n");
+	setlocale(LC_ALL, "");
 
 	/*
 	 * Recognizable command format:

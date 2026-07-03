@@ -210,8 +210,7 @@ int main(int argc, char *argv[])
 #define MY_FTSOPTS (FTS_PHYSICAL | FTS_SEEDOT)
 	static int c, retval;
 
-	setlocale(LC_MESSAGES, "");
-	setlocale(LC_CTYPE, "");
+	setlocale(LC_ALL, "");
 
 	if (!(argc && *argv))
 		usage();

@@ -47,8 +47,7 @@ int main(int argc, char *argv[])
 	exfat_init_blk_dev_info(&bd);
 	exfat_init_user_input(&ui);
 
-	if (!setlocale(LC_CTYPE, ""))
-		exfat_err("failed to init locale/codeset\n");
+	setlocale(LC_ALL, "");
 
 	if (argc == 2)
 		flags = EXFAT_GET_VOLUME_LABEL;
