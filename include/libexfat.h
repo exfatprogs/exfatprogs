@@ -125,22 +125,14 @@ extern const char *dummy_bootcode_msg;
 
 struct exfat_user_input {
 	const char *dev_name;
-	bool writeable;
+	const char *guid;
+	unsigned char *fat_table_buff;
 	unsigned int sector_size;
 	unsigned int cluster_size;
 	unsigned int sec_per_clu;
 	unsigned int boundary_align;
-	bool pack_bitmap;
-	bool quick;
-	bool force;
-	bool verify;
-	bool discard;
-	__u16 volume_label[VOLUME_LABEL_MAX_LEN];
-	int volume_label_len;
 	unsigned int volume_serial;
-	const char *guid;
-	unsigned char *fat_table_buff;
-
+	int volume_label_len;
 	struct {
 		const char *file;
 		const unsigned char *table;
@@ -148,10 +140,15 @@ struct exfat_user_input {
 		size_t len;
 		void (*free)(struct exfat_user_input *ui);
 	} upcase;
-
 	const char *bootcode_msg;
-
 	enum exfat_part_table_type part_table;
+	__u16 volume_label[VOLUME_LABEL_MAX_LEN];
+	bool writeable:1;
+	bool pack_bitmap:1;
+	bool quick:1;
+	bool force:1;
+	bool verify:1;
+	bool discard:1;
 };
 
 /* Returns true if the option used or the option argument is not an empty string */
