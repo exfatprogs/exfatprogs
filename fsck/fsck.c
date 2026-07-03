@@ -513,8 +513,8 @@ static int exfat_boot_region_check(struct exfat_blk_dev *blkdev,
 				   bool ignore_bad_fs_name)
 {
 	struct pbr *boot_sect;
-	unsigned int sect_size;
-	int ret;
+	unsigned int sect_size = 0; /* zero if invalid */
+	int ret = -EINVAL;
 
 	/* First, find out the exfat sector size */
 	boot_sect = malloc(sizeof(*boot_sect));
@@ -534,12 +534,14 @@ static int exfat_boot_region_check(struct exfat_blk_dev *blkdev,
 		return -ENOTSUP;
 	}
 
-	sect_size = 1 << boot_sect->bsx.sect_size_bits;
+	/* check boot regions */
+	if (9 <= boot_sect->bsx.sect_size_bits && boot_sect->bsx.sect_size_bits <= 12) {
+		sect_size = 1 << boot_sect->bsx.sect_size_bits;
+		ret = read_boot_region(blkdev, bs, BOOT_SEC_IDX, sect_size, true);
+	} else
+		exfat_err("invalid sector size\n");
 	free(boot_sect);
 
-	/* check boot regions */
-	ret = read_boot_region(blkdev, bs,
-			       BOOT_SEC_IDX, sect_size, true);
 	if (ret == -EINVAL &&
 	    exfat_repair_ask(&exfat_fsck, ER_BS_BOOT_REGION,
 			     "boot region is corrupted. try to restore the region from backup"
@@ -547,7 +549,7 @@ static int exfat_boot_region_check(struct exfat_blk_dev *blkdev,
 		const unsigned int sector_sizes[] = {512, 4096, 1024, 2048};
 		unsigned int i;
 
-		if (sect_size >= 512 && sect_size <= EXFAT_MAX_SECTOR_SIZE) {
+		if (sect_size) {
 			ret = read_boot_region(blkdev, bs,
 					       BACKUP_BOOT_SEC_IDX, sect_size,
 					       false);
