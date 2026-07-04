@@ -115,7 +115,8 @@ int exfat_bitmap_find_one(struct exfat *exfat, unsigned char *bmap,
 				     start_clu, next, 1);
 }
 
-unsigned int exfat_count_used_clusters(const void *bitmap, const size_t bitmap_len)
+unsigned int exfat_count_used_clusters(const void *bitmap, const size_t bitmap_len,
+		const unsigned int clamp)
 {
 	const size_t lc = bitmap_len / sizeof(unsigned long);
 	unsigned int ret = 0;
@@ -127,7 +128,7 @@ unsigned int exfat_count_used_clusters(const void *bitmap, const size_t bitmap_l
 	for (size_t i = lc * sizeof(unsigned long); i < bitmap_len; i++)
 		ret += __builtin_popcountl(((unsigned char*)bitmap)[i]);
 
-	return ret;
+	return MIN(ret, clamp);
 }
 
 

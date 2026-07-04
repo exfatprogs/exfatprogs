@@ -2066,7 +2066,8 @@ int main(int argc, char * const argv[])
 
 	if (exfat_fsck.options & FSCK_OPTS_PROGRESS_BAR) {
 		used_clus_count = exfat_count_used_clusters(exfat_fsck.exfat->disk_bitmap,
-				(size_t)exfat_fsck.exfat->disk_bitmap_size);
+				(size_t)exfat_fsck.exfat->disk_bitmap_size,
+				exfat_fsck.exfat->clus_count);
 		progress_init(&exfat_fsck.progress_bar, 0, used_clus_count, 0);
 	}
 

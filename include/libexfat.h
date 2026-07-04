@@ -211,7 +211,8 @@ int exfat_bitmap_find_one(struct exfat *exfat, unsigned char *bmap,
 /*
  * Count ones in the bitmap. The function won't handle unaligned bitmaps.
  */
-unsigned int exfat_count_used_clusters(const void *bitmap, const size_t bitmap_len);
+unsigned int exfat_count_used_clusters(const void *bitmap, const size_t bitmap_len,
+		const unsigned int clamp);
 
 void show_version(void);
 

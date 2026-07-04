@@ -198,7 +198,8 @@ static int exfat_show_fs_info(struct exfat *exfat)
 			return -EIO;
 		}
 
-		used_clus = exfat_count_used_clusters(exfat->disk_bitmap, (size_t)bitmap_len);
+		used_clus = exfat_count_used_clusters(exfat->disk_bitmap, (size_t)bitmap_len,
+						      exfat->clus_count);
 
 		exfat_info("\n---------------- Show the statistics ----------------\n");
 		dump_field("Cluster size", "%u", bd->cluster_size);
