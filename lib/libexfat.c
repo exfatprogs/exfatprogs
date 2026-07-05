@@ -979,6 +979,7 @@ out:
 
 static int set_guid(__u8 *guid, const char *input)
 {
+	__u8 buf[EXFAT_GUID_LEN];
 	int i, j, zero_len = 0;
 	int len = strlen(input);
 
@@ -1005,9 +1006,9 @@ static int set_guid(__u8 *guid, const char *input)
 		}
 
 		if (j & 1)
-			guid[j >> 1] |= ch;
+			buf[j >> 1] |= ch;
 		else
-			guid[j >> 1] = ch << 4;
+			buf[j >> 1] = ch << 4;
 
 		j++;
 
@@ -1019,6 +1020,27 @@ static int set_guid(__u8 *guid, const char *input)
 		exfat_err("%s is invalid for volume GUID\n", input);
 		return -EINVAL;
 	}
+
+	guid[0] = buf[3];
+	guid[1] = buf[2];
+	guid[2] = buf[1];
+	guid[3] = buf[0];
+
+	guid[4] = buf[5];
+	guid[5] = buf[4];
+
+	guid[6] = buf[7];
+	guid[7] = buf[6];
+
+	guid[8] = buf[8];
+	guid[9] = buf[9];
+
+	guid[10] = buf[10];
+	guid[11] = buf[11];
+	guid[12] = buf[12];
+	guid[13] = buf[13];
+	guid[14] = buf[14];
+	guid[15] = buf[15];
 
 	return 0;
 }
