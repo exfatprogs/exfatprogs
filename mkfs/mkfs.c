@@ -1811,8 +1811,8 @@ void exfat_gen_guid(void *out)
 			uint32_t a;
 			uint16_t b;
 			uint8_t ver[2];
-			uint16_t c;
-			uint32_t d;
+			uint8_t var[2];
+			uint32_t c;
 		} parts;
 	} __attribute__((__packed__)) rnd = { 0, };
 	struct timespec ts[2] = { 0, };
@@ -1842,8 +1842,9 @@ void exfat_gen_guid(void *out)
 		if (memcmp(&rnd, zm, 16) == 0)
 			continue;
 
-		rnd.parts.ver[0] &= 0xF0;
-		rnd.parts.ver[0] |= 0x04;
+		rnd.parts.ver[1] &= 0x0F;
+		rnd.parts.ver[1] |= 0x40;
+		rnd.parts.var[0] = (rnd.parts.var[0] & 0x3F) | 0x80;
 		memcpy(out, &rnd, 16);
 		return;
 	}
