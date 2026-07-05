@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <linux/fs.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <inttypes.h>
@@ -1700,6 +1701,16 @@ int main(int argc, char *argv[])
 	if (ret) {
 		exfat_err("Sync failed: %s\n", strerror(errno));
 		goto out;
+	}
+
+	if (ui.part_table && bd.isblk) {
+		errno = 0;
+		if (ioctl(bd.dev_fd, BLKRRPART) != 0) {
+			exfat_err("BLKRRPART ioctl(): %s\n", strerror(errno));
+			exfat_err("Failed to inform the kernel of the new partition table.\n"
+				  "The volume may not show up and you'll have to reconnect "
+				  "the device or reboot to be able to use the volume.\n");
+		}
 	}
 
 out:
