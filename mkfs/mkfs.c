@@ -1694,8 +1694,14 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	exfat_info("Synchronizing...\n");
+	if (!quiet)
+		exfat_info("Synchronizing...\n");
 	ret = fsync(bd.dev_fd);
+	if (ret) {
+		exfat_err("Sync failed: %s\n", strerror(errno));
+		goto out;
+	}
+
 out:
 	if (ret && gptwo_tried) {
 		exfat_info("Wiping out GPT structures...\n");
@@ -1717,8 +1723,10 @@ out:
 	exfat_deinit_blk_dev_info(&bd);
 	exfat_deinit_user_input(&ui);
 
-	if (!ret)
-		exfat_info("\nexFAT format complete!\n");
+	if (!ret) {
+		if (!quiet)
+			exfat_info("\nexFAT format complete!\n");
+	}
 	else
 		exfat_err("\nexFAT format fail!\n");
 	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
