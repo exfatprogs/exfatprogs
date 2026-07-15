@@ -60,6 +60,14 @@ struct exfat_lookup_filter {
 	} out;
 };
 
+union exfat_timestamp {
+	uint32_t raw;
+	struct {
+		uint16_t time_part;
+		uint16_t date_part;
+	};
+};
+
 int exfat_de_iter_init(struct exfat_de_iter *iter, struct exfat *exfat,
 		       struct exfat_inode *dir, struct buffer_desc *bd);
 int exfat_de_iter_get(struct exfat_de_iter *iter,
@@ -103,4 +111,11 @@ int exfat_find_free_cluster(struct exfat *exfat, int clu_count,
 		clus_t *new_clu);
 int exfat_alloc_cluster(struct exfat *exfat, struct exfat_inode *inode,
 		clus_t *new_clu);
+
+/* Buffer len: at least 30 characters including the null-terminator */
+#define EXFAT_TIMESTAMP_STRLEN (30)
+
+int exfat_format_timestamp(char *out, size_t size,
+		const union exfat_timestamp *ts, uint8_t cs, uint8_t tz);
+
 #endif

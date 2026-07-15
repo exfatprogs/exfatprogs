@@ -1058,3 +1058,38 @@ out:
 	free(dset);
 	return err;
 }
+
+int exfat_format_timestamp(char *out, size_t size,
+		const union exfat_timestamp *ts, uint8_t cs, uint8_t tz)
+{
+	char tz_part[sizeof("+00:00")];
+	const unsigned int year = 1980 + (ts->date_part >> 9);
+	const unsigned int mon = (ts->date_part >> 5) & 0x000F;
+	const unsigned int day = ts->date_part & 0x001F;
+	const unsigned int hour = ts->time_part >> 11;
+	const unsigned int min = (ts->time_part >> 5) & 0x003F;
+	const unsigned int sec = (ts->time_part & 0x001F) << 1;
+	const unsigned int msec = sec * 1000 + cs * 10;
+
+	tz_part[0] = 0;
+	if (tz & 0x80) {
+		unsigned int tzoff = tz & 0x7F;
+		unsigned int tz_hour, tz_min;
+		char sign;
+
+		if (tzoff <= 0x3F) {
+			tzoff *= 15;
+			sign = '+';
+		} else {
+			tzoff = (0x80 - tzoff) * 15;
+			sign = '-';
+		}
+		tz_hour = tzoff / 60;
+		tz_min = tzoff % 60;
+
+		snprintf(tz_part, sizeof(tz_part), "%c%02u:%02u", sign, tz_hour, tz_min);
+	}
+
+	return snprintf(out, size, "%04u-%02u-%02uT%02u:%02u:%02u.%03u%s",
+			year, mon, day, hour, min, msec / 1000, msec % 1000, tz_part);
+}

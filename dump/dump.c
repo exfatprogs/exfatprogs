@@ -488,6 +488,38 @@ static void exfat_show_file_dentry(struct exfat_dentry *ed,
 		struct exfat *exfat, uint32_t flags)
 {
 	uint16_t checksum = calc_dentry_set_checksum(ed, ed->file_num_ext + 1);
+	union exfat_timestamp btime = {
+		.time_part = le16_to_cpu(ed->file_create_time),
+		.date_part = le16_to_cpu(ed->file_create_date),
+	};
+	union exfat_timestamp mtime = {
+		.time_part = le16_to_cpu(ed->file_modify_time),
+		.date_part = le16_to_cpu(ed->file_modify_date),
+	};
+	union exfat_timestamp atime = {
+		.time_part = le16_to_cpu(ed->file_access_time),
+		.date_part = le16_to_cpu(ed->file_access_date),
+	};
+	char btime_str[EXFAT_TIMESTAMP_STRLEN];
+	char mtime_str[EXFAT_TIMESTAMP_STRLEN];
+	char atime_str[EXFAT_TIMESTAMP_STRLEN];
+
+	btime_str[0] = mtime_str[0] = atime_str[0] = 0;
+
+	exfat_format_timestamp(btime_str, EXFAT_TIMESTAMP_STRLEN, &btime,
+			ed->file_create_time_ms, ed->file_create_tz);
+	exfat_format_timestamp(mtime_str, EXFAT_TIMESTAMP_STRLEN, &mtime,
+			ed->file_modify_time_ms, ed->file_modify_tz);
+	exfat_format_timestamp(atime_str, EXFAT_TIMESTAMP_STRLEN, &atime,
+			0, ed->file_access_tz);
+
+	/* Flip them back to LE on BE arch. */
+	btime.time_part = cpu_to_le16(btime.time_part);
+	btime.date_part = cpu_to_le16(btime.date_part);
+	mtime.time_part = cpu_to_le16(mtime.time_part);
+	mtime.date_part = cpu_to_le16(mtime.date_part);
+	atime.time_part = cpu_to_le16(atime.time_part);
+	atime.date_part = cpu_to_le16(atime.date_part);
 
 	dump_dentry_field("SecondaryCount", "%u", ed->file_num_ext);
 	if (checksum == le16_to_cpu(ed->file_checksum))
@@ -496,9 +528,9 @@ static void exfat_show_file_dentry(struct exfat_dentry *ed,
 		dump_dentry_field("SetChecksum", "0x%04X(expected: 0x%04X)",
 				le16_to_cpu(ed->file_checksum), checksum);
 	dump_dentry_field("FileAttributes", "0x%04X", le16_to_cpu(ed->file_attr));
-	dump_dentry_field("CreateTimestamp", "0x%08X", le32_to_cpu(ed->file_create_time));
-	dump_dentry_field("LastModifiedTimestamp", "0x%08X", le32_to_cpu(ed->file_modify_time));
-	dump_dentry_field("LastAccessedTimestamp", "0x%08X", le32_to_cpu(ed->file_access_time));
+	dump_dentry_field("CreateTimestamp", "0x%08X\t%s", cpu_to_le32(btime.raw), btime_str);
+	dump_dentry_field("LastModifiedTimestamp", "0x%08X\t%s", cpu_to_le32(mtime.raw), mtime_str);
+	dump_dentry_field("LastAccessedTimestamp", "0x%08X\t%s", cpu_to_le32(atime.raw), atime_str);
 	dump_dentry_field("Create10msIncrement", "%u", ed->file_create_time_ms);
 	dump_dentry_field("LastModified10msIncrement", "%u", ed->file_modify_time_ms);
 	dump_dentry_field("CreateUtcOffset", "%u", ed->file_create_tz);
