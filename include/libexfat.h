@@ -160,27 +160,36 @@ static inline bool exfat_ui_has_upcase_file(const struct exfat_user_input *ui)
 struct exfat;
 struct exfat_inode;
 
-#ifdef WORDS_BIGENDIAN
-typedef __u8	bitmap_t;
+#ifdef __BITS_PER_LONG
+#define BITS_PER	__BITS_PER_LONG
 #else
-typedef __u32	bitmap_t;
+/* Non-Linux polyfill(use C23) */
+#define BITS_PER	ULONG_WIDTH
 #endif
 
-#define BITS_PER	(sizeof(bitmap_t) * 8)
-#define BIT_MASK(__c)	(1 << ((__c) % BITS_PER))
-#define BIT_ENTRY(__c)	((__c) / BITS_PER)
+#if BITS_PER == 64
+typedef __u64		bitmap_t;
+#define BIT_MASK(__c)	cpu_to_le64((bitmap_t)1 << ((__c) % BITS_PER))
+#elif BITS_PER == 32
+typedef __u32		bitmap_t;
+#define BIT_MASK(__c)	cpu_to_le32((bitmap_t)1 << ((__c) % BITS_PER))
+#else
+#error "BITS_PER neither 32 or 64"
+#endif
+#define BIT_ENTRY(__c)			((__c) / BITS_PER)
+#define BITMAP_WORD_AT(bmap, bit)	((bitmap_t *)(bmap))[BIT_ENTRY(bit)]
 
 #define EXFAT_BITMAP_SIZE(__c_count)	\
 	(DIV_ROUND_UP(__c_count, BITS_PER) * sizeof(bitmap_t))
 
 #define BITMAP_GET(bmap, bit)	\
-	(((bitmap_t *)(bmap))[BIT_ENTRY(bit)] & BIT_MASK(bit))
+	(BITMAP_WORD_AT(bmap, bit) & BIT_MASK(bit))
 
 #define BITMAP_SET(bmap, bit)	\
-	(((bitmap_t *)(bmap))[BIT_ENTRY(bit)] |= BIT_MASK(bit))
+	(BITMAP_WORD_AT(bmap, bit) |= BIT_MASK(bit))
 
 #define BITMAP_CLEAR(bmap, bit)	\
-	(((bitmap_t *)(bmap))[BIT_ENTRY(bit)] &= ~BIT_MASK(bit))
+	(BITMAP_WORD_AT(bmap, bit) &= ~BIT_MASK(bit))
 
 static inline bool exfat_bitmap_get(unsigned char *bmap, clus_t c)
 {
@@ -199,7 +208,8 @@ static inline void exfat_bitmap_set(unsigned char *bmap, clus_t c)
 static inline void exfat_bitmap_clear(unsigned char *bmap, clus_t c)
 {
 	clus_t cc = c - EXFAT_FIRST_CLUSTER;
-	(((bitmap_t *)(bmap))[BIT_ENTRY(cc)] &= ~BIT_MASK(cc));
+
+	BITMAP_CLEAR(bmap, cc);
 }
 
 void exfat_bitmap_set_range(struct exfat *exfat, unsigned char *bitmap,

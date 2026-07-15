@@ -72,10 +72,134 @@ static void test_count_used_clusters_1(void)
 	assert(seen_garbage);
 }
 
+/* Tests bitmap manipulation functions. */
+static void test_bitmap_func(void)
+{
+	static const clus_t ARR[] = {
+		1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 1023,
+		1024, 1025, 1026, 1027, 1028, 1029, 1030, 1031, 1032, 1032,
+		65543, 65544,
+		0
+	};
+
+	for (const clus_t *cc = ARR; *cc != 0; cc++) {
+		const size_t bm_len = DIV_ROUND_UP(*cc, 8);
+		const size_t bm_size = EXFAT_BITMAP_SIZE(*cc);
+		void *m = calloc(bm_size, 1);
+		unsigned int clus_cnt;
+
+		assert(bm_len > 0 && bm_len <= bm_size);
+
+		/* Fault the pages just for the sake of it. */
+		clus_cnt = exfat_count_used_clusters(m, bm_len, *cc);
+		assert(clus_cnt == 0);
+
+		/* 1x1 */
+		for (clus_t i = 0, j = EXFAT_FIRST_CLUSTER; i < *cc; i++, j++) {
+			bool b;
+
+			/* Test set(). */
+			exfat_bitmap_set(m, j);
+			b = exfat_bitmap_get(m, j);
+			clus_cnt = exfat_count_used_clusters(m, bm_len, *cc);
+			assert(b);
+			assert(clus_cnt == 1);
+
+			/* Test clear(). */
+			exfat_bitmap_clear(m, j);
+			clus_cnt = exfat_count_used_clusters(m, bm_len, *cc);
+			b = exfat_bitmap_get(m, j);
+			assert(!b);
+			assert(clus_cnt == 0);
+		}
+
+		/* SxS */
+		for (clus_t i = 0, j = EXFAT_FIRST_CLUSTER; i < *cc - 1; i++, j++) {
+			bool b1, b2;
+
+			/* Test set(). */
+			exfat_bitmap_set(m, j);
+			b1 = exfat_bitmap_get(m, j);
+			b2 = exfat_bitmap_get(m, j + 1);
+			assert(b1 && !b2);
+			clus_cnt = exfat_count_used_clusters(m, bm_len, *cc);
+			assert(clus_cnt == 1);
+
+			exfat_bitmap_set(m, j + 1);
+			b1 = exfat_bitmap_get(m, j);
+			b2 = exfat_bitmap_get(m, j + 1);
+			assert(b1 && b2);
+			clus_cnt = exfat_count_used_clusters(m, bm_len, *cc);
+			assert(clus_cnt == 2);
+
+			/* Test clear(). */
+			exfat_bitmap_clear(m, j);
+			b1 = exfat_bitmap_get(m, j);
+			b2 = exfat_bitmap_get(m, j + 1);
+			assert(!b1 && b2);
+			clus_cnt = exfat_count_used_clusters(m, bm_len, *cc);
+			assert(clus_cnt == 1);
+
+			exfat_bitmap_clear(m, j + 1);
+			b1 = exfat_bitmap_get(m, j);
+			b2 = exfat_bitmap_get(m, j + 1);
+			assert(!b1 && !b2);
+			clus_cnt = exfat_count_used_clusters(m, bm_len, *cc);
+			assert(clus_cnt == 0);
+		}
+
+		free(m);
+	}
+}
+
+/*
+ * Data-driven test of bitmap manipulation functions against endianness confusion
+ *
+ * This doesn't really mean anything on LE machines as the on-disk format is
+ * already in LE. Make sure this is run on BE machines.
+ */
+static void test_bitmap_endian(void)
+{
+	static const unsigned char EXPECTED_1[] = {
+		0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+	};
+	static const unsigned char EXPECTED_2[] = {
+		0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00
+	};
+	static const unsigned char EXPECTED_3[] = {
+		0x01, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00
+	};
+	unsigned char buf[sizeof(EXPECTED_1)];
+	int ret;
+
+	assert(sizeof(buf) % sizeof(bitmap_t) == 0);
+	assert(sizeof(buf) == sizeof(EXPECTED_1));
+	assert(sizeof(buf) == sizeof(EXPECTED_2));
+	assert(sizeof(buf) == sizeof(EXPECTED_3));
+
+	memset(buf, 0, sizeof(buf));
+	exfat_bitmap_set(buf, EXFAT_FIRST_CLUSTER + 0);
+	ret = memcmp(buf, EXPECTED_1, sizeof(buf));
+	assert(ret == 0);
+
+	memset(buf, 0, sizeof(buf));
+	exfat_bitmap_set(buf, EXFAT_FIRST_CLUSTER + 32);
+	ret = memcmp(buf, EXPECTED_2, sizeof(buf));
+	assert(ret == 0);
+
+	memset(buf, 0, sizeof(buf));
+	exfat_bitmap_set(buf, EXFAT_FIRST_CLUSTER + 0);
+	exfat_bitmap_set(buf, EXFAT_FIRST_CLUSTER + 32);
+	ret = memcmp(buf, EXPECTED_3, sizeof(buf));
+	assert(ret == 0);
+}
+
 int main(int argc, char *argv[])
 {
 	test_count_used_clusters_0();
 	test_count_used_clusters_1();
+	test_bitmap_func();
+	test_bitmap_endian();
 
 	return 0;
 }
