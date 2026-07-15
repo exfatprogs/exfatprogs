@@ -390,7 +390,7 @@ int exfat_de_iter_revert(struct exfat_de_iter *iter, int num)
 out:
 	iter->max_skip_dentries = 0;
 	iter->de_file_offset = file_offset;
-	iter->next_read_offset = (file_offset & ~(iter->read_size - 1)) + iter->read_size;
+	iter->next_read_offset = (file_offset & ~((off_t)iter->read_size - 1)) + iter->read_size;
 
 	return 0;
 }
