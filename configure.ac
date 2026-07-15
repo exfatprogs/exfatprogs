@@ -51,4 +51,10 @@ AM_COND_IF(
 PKG_CHECK_MODULES([BLKID], [blkid >= 2.20], [AC_DEFINE([HAVE_BLKID], [1], [Define if libblkid is from util-linux])],
 	[PKG_CHECK_MODULES([EXT2_BLKID], [blkid], [AC_DEFINE([HAVE_EXT2_BLKID], [1], [Define if libblkid is from libext2])])])
 
+AC_ARG_ENABLE([tests],
+	AS_HELP_STRING([--enable-tests], [build internal test programs])
+	[enable_tests=yes]
+)
+AM_CONDITIONAL([ENABLE_TESTS], [test "x$enable_tests" = xyes])
+
 AC_OUTPUT

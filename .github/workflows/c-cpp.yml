@@ -67,9 +67,15 @@ jobs:
     - name: Build
       run: |
         export "CC=${{ matrix.cc }}"
-        ./autogen.sh && ./configure
+        ./autogen.sh && ./configure --enable-tests
         make -j "$(nproc)"
         sudo make install
+    - name: Run internal tests with Valgrind
+      run: |
+        set -e
+        pushd ./lib/tests
+        TEST_PREOP="valgrind --error-exitcode=1" ./run-all.sh
+        popd
     - name: Run fsck with Valgrind
       run: |
         pushd tests
@@ -223,8 +229,15 @@ jobs:
         CFLAGS: --static
         PKG_CONFIG_PATH: /usr/${{ matrix.host }}/local/lib/pkgconfig
       run: |
-        ./configure --host=${{ matrix.host }}
+        ./configure --host=${{ matrix.host }} --enable-tests
         make -j$((`nproc`+1))
+
+    - name: Run internal tests
+      run: |
+        set -e
+        pushd ./lib/tests
+        ./run-all.sh
+        popd
 
     - name: Test foreign filesystem detection
       env:
