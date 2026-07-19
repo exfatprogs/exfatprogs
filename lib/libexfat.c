@@ -115,20 +115,37 @@ int exfat_bitmap_find_one(struct exfat *exfat, unsigned char *bmap,
 				     start_clu, next, 1);
 }
 
-unsigned int exfat_count_used_clusters(const void *bitmap, const size_t bitmap_len,
-		const unsigned int clamp)
+unsigned int exfat_count_used_clusters(const void *bitmap, const size_t size,
+		const unsigned int total_clus)
 {
-	const size_t lc = bitmap_len / sizeof(unsigned long);
+	const size_t content_len = DIV_ROUND_UP(total_clus, 8);
+	const size_t lb_index = content_len - 1;
+	const size_t calc_len = MIN(size, content_len);
+	const unsigned int last_bits = total_clus % CHAR_BIT;
+	const size_t lc = calc_len / sizeof(unsigned long);
 	unsigned int ret = 0;
 
 	assert((uintptr_t)bitmap % sizeof(unsigned long) == 0);
 
 	for (size_t i = 0; i < lc; i++)
-		ret += __builtin_popcountl(((unsigned long*)bitmap)[i]);
-	for (size_t i = lc * sizeof(unsigned long); i < bitmap_len; i++)
-		ret += __builtin_popcountl(((unsigned char*)bitmap)[i]);
+		ret += __builtin_popcountl(((unsigned long *)bitmap)[i]);
+	for (size_t i = lc * sizeof(unsigned long); i < calc_len; i++)
+		ret += __builtin_popcountl(((unsigned char *)bitmap)[i]);
 
-	return MIN(ret, clamp);
+	/*
+	 * Subtract the garbage ones in the last byte that might have been
+	 * counted. This is much simpler than trying to mask the last byte on
+	 * the fly.
+	 */
+	if (lb_index < calc_len && last_bits != 0) {
+		const unsigned char gmask = (1 << last_bits) - 1;
+		unsigned char lb = ((unsigned char *)bitmap)[lb_index];
+
+		lb &= ~gmask;
+		ret -= __builtin_popcountl(lb);
+	}
+
+	return ret;
 }
 
 
