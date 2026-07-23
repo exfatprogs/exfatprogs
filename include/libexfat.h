@@ -346,8 +346,11 @@ void exfat_close_fd_devzero(void);
  * EBADFD if exfat_open_fd_devzero() has been called successfully, or any other
  * errno set in mmap().
  *
- * Note that /dev/zero mapping do not count towards committed memory. See
- * vm.overcommit for detail.
+ * Note that /dev/zero mappings do not count towards committed memory. See
+ * vm.overcommit for detail. /dev/zero is used instead of MAP_ANONYMOUS for
+ * portability reasons(the behaviour of shared read-only anonymous mapping is
+ * not well-defined). However, on Linux, it should be equivalent to allocating
+ * memory through MAP_ANONYMOUS.
  *
  * For rw version of this function, see exfat_map_blankmem().
  */
@@ -357,7 +360,8 @@ const void *exfat_map_zeromem(const size_t len, bool *mapped);
  * zeros(e.g. allocation bitmap).
  *
  * The function has the exact same semantics as exfat_map_zeromem(), except that
- * it calls mmap() with PROT_READ|PROT_WRITE and MAP_PRIVATE.
+ * it calls mmap() with PROT_READ|PROT_WRITE and MAP_PRIVATE|MAP_NORESERVE if
+ * and only if supported by the platform.
  */
 void *exfat_map_blankmem(const size_t len, bool *mapped);
 /*

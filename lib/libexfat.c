@@ -1530,9 +1530,9 @@ void *exfat_map_blankmem(const size_t len, bool *mapped)
 	int prot = -1;
 	int flags = -1;
 
-#ifdef _POSIX_MAPPED_FILES
+#if defined(_POSIX_MAPPED_FILES) && defined(MAP_NORESERVE)
 	prot = PROT_READ|PROT_WRITE;
-	flags = MAP_PRIVATE;
+	flags = MAP_PRIVATE|MAP_NORESERVE;
 #endif
 	return exfat_do_map_zerodev(len, mapped, prot, flags);
 }
