@@ -194,8 +194,22 @@ static void test_bitmap_endian(void)
 	assert(ret == 0);
 }
 
+/* Tests bitmap size calculation near the maximum cluster count. */
+static void test_bitmap_size(void)
+{
+	const clus_t clus_cnt = EXFAT_MAX_NUM_CLUSTER - 1;
+	const size_t expected =
+		DIV_ROUND_UP((uint64_t)clus_cnt, BITS_PER) *
+		sizeof(bitmap_t);
+	const size_t actual = EXFAT_BITMAP_SIZE(clus_cnt);
+
+	assert(expected != 0);
+	assert(actual == expected);
+}
+
 int main(int argc, char *argv[])
 {
+	test_bitmap_size();
 	test_count_used_clusters_0();
 	test_count_used_clusters_1();
 	test_bitmap_func();

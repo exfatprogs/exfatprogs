@@ -180,7 +180,7 @@ typedef __u32		bitmap_t;
 #define BITMAP_WORD_AT(bmap, bit)	((bitmap_t *)(bmap))[BIT_ENTRY(bit)]
 
 #define EXFAT_BITMAP_SIZE(__c_count)	\
-	(DIV_ROUND_UP(__c_count, BITS_PER) * sizeof(bitmap_t))
+	(DIV_ROUND_UP((uint64_t)__c_count, BITS_PER) * sizeof(bitmap_t))
 
 #define BITMAP_GET(bmap, bit)	\
 	(BITMAP_WORD_AT(bmap, bit) & BIT_MASK(bit))
