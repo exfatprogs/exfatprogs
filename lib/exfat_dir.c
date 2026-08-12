@@ -763,8 +763,8 @@ int exfat_update_file_dentry_set(struct exfat *exfat,
 		}
 	}
 
-	dset[1].dentry.stream.valid_size = cpu_to_le64(ccount * exfat->clus_size);
-	dset[1].dentry.stream.size = cpu_to_le64(ccount * exfat->clus_size);
+	dset[1].dentry.stream.valid_size = cpu_to_le64((uint64_t)ccount * exfat->clus_size);
+	dset[1].dentry.stream.size = cpu_to_le64((uint64_t)ccount * exfat->clus_size);
 	if (start_clu)
 		dset[1].dentry.stream.start_clu = cpu_to_le32(start_clu);
 
