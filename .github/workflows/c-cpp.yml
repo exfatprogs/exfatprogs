@@ -33,6 +33,7 @@ env:
     1T 2T 3T 4T 6T 8T 16T 32T 44T 64T
   TEST_MAGIC: dd01aeee-bab0-babe-babe-deadcafebeef
 
+  UTIL_LINUX_TARBALL: util-linux-2.42.tar.xz
   UTIL_LINUX_SRC: https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.tar.xz
   # xfstests generic/740 equiv
   FOREIGN_FS: |
@@ -188,12 +189,29 @@ jobs:
         sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
+
+    - name: Retrieve util-linux tarball from cache
+      uses: actions/cache/restore@v6
+      id: restore-util-linux-tarball
+      with:
+        path: ${{ env.UTIL_LINUX_TARBALL }}
+        key: tarball-${{ env.UTIL_LINUX_TARBALL }}
+    - name: Download util-linux tarball
+      if: steps.restore-util-linux-tarball.outputs.cache-hit != 'true'
+      run: curl -L -o "$UTIL_LINUX_TARBALL" "$UTIL_LINUX_SRC"
+    - name: Save util-linux tarball from cache
+      uses: actions/cache/save@v6
+      if: steps.restore-util-linux-tarball.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.UTIL_LINUX_TARBALL }}
+        key: tarball-${{ env.UTIL_LINUX_TARBALL }}
+
     - name: Build libblkid
       shell: bash
       run: |
         set -e
-        curl "$UTIL_LINUX_SRC" | xzcat | tar xf -
-        pushd util-linux-*
+        tar xf "${{ env.UTIL_LINUX_TARBALL }}"
+        pushd util-linux-*/
 
         ./configure --host=${{ matrix.host }} --prefix=/usr/${{ matrix.host }}/local \
           --disable-shared --enable-static --disable-all-programs --enable-libblkid
