@@ -370,9 +370,9 @@ static int exfat_mark_volume_dirty(struct exfat *exfat, bool dirty)
 
 	flags = le16_to_cpu(exfat->bs->bsx.vol_flags);
 	if (dirty)
-		flags |= 0x02;
+		flags |= VOL_DIRTY;
 	else
-		flags &= ~0x02;
+		flags &= ~VOL_DIRTY;
 
 	exfat->bs->bsx.vol_flags = cpu_to_le16(flags);
 	if (!exfat_write_full(exfat->blk_dev->dev_fd, exfat->bs, sizeof(struct pbr), 0)) {
