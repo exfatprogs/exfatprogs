@@ -388,6 +388,7 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 	pbsx->fs_version[0] = 0;
 	pbsx->fs_version[1] = 1;
 	pbsx->phy_drv_no = 0x80;
+	pbsx->perc_in_use = 0xFF;
 	memset(pbsx->reserved2, 0, 7);
 
 	memset(ppbr->boot_code, 0, 390);
