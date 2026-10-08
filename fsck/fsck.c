@@ -414,6 +414,20 @@ static int read_boot_region(struct exfat_blk_dev *bd, struct pbr **pbr,
 		goto err;
 	}
 
+	if (bs->bsx.sect_size_bits < 9 || bs->bsx.sect_size_bits > 12) {
+		if (verbose)
+			exfat_err("invalid sector size bits: %u\n",
+				  bs->bsx.sect_size_bits);
+		goto err;
+	}
+
+	if (bs->bsx.sect_per_clus_bits > 25 - bs->bsx.sect_size_bits) {
+		if (verbose)
+			exfat_err("invalid sectors per cluster bits: %u\n",
+				  bs->bsx.sect_per_clus_bits);
+		goto err;
+	}
+
 	ret = boot_region_checksum(bd->dev_fd, bs_offset, sect_size);
 	if (ret < 0)
 		goto err;
