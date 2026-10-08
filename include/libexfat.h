@@ -24,7 +24,7 @@ typedef __u32 clus_t;
 #define MIN(a, b)	((a) < (b) ? (a) : (b))
 #define MAX(a, b)	((a) > (b) ? (a) : (b))
 
-#define DIV_ROUND_UP(__i, __d)	(((__i) + (__d) - 1) / (__d))
+#define DIV_ROUND_UP(__i, __d)	(((uint64_t)(__i) + (__d) - 1) / (__d))
 
 #define EXFAT_MIN_NUM_SEC_VOL		(2048)
 #define EXFAT_MAX_NUM_SEC_VOL		((2 << 64) - 1)

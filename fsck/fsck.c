@@ -461,12 +461,28 @@ static int read_boot_region(struct exfat_blk_dev *bd, struct pbr **pbr,
 		goto err;
 	}
 
-	if (le64_to_cpu(bs->bsx.vol_length) * EXFAT_SECTOR_SIZE(bs) >
-			bd->size) {
+	if (le64_to_cpu(bs->bsx.vol_length) > (bd->size >> bs->bsx.sect_size_bits)) {
 		if (verbose)
 			exfat_err("too large sector count: %" PRIu64 ", expected: %llu\n",
 				  le64_to_cpu(bs->bsx.vol_length),
 				  bd->num_sectors);
+		goto err;
+	}
+
+	/* Prevent underflow when subtracting clu_offset from vol_length */
+	if (le32_to_cpu(bs->bsx.clu_offset) >= le64_to_cpu(bs->bsx.vol_length)) {
+		if (verbose)
+			exfat_err("cluster offset (%u) is larger than volume length (%" PRIu64 ")\n",
+				  le32_to_cpu(bs->bsx.clu_offset),
+				  le64_to_cpu(bs->bsx.vol_length));
+		goto err;
+	}
+
+	/* Cap clu_count to the spec limit to prevent overflow */
+	if (le32_to_cpu(bs->bsx.clu_count) > EXFAT_MAX_NUM_CLUSTER) {
+		if (verbose)
+			exfat_err("too large cluster count: %u, max allowed: %u\n",
+				  le32_to_cpu(bs->bsx.clu_count), EXFAT_MAX_NUM_CLUSTER);
 		goto err;
 	}
 
