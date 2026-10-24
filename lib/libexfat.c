@@ -1959,6 +1959,12 @@ int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs)
 		goto err;
 	}
 
+	if (le32_to_cpu(pbr->bsx.clu_count) > EXFAT_MAX_NUM_CLUSTER) {
+		exfat_err("too large cluster count: %u, max allowed: %u\n",
+			  le32_to_cpu(pbr->bsx.clu_count), EXFAT_MAX_NUM_CLUSTER);
+		goto err;
+	}
+
 	sect_size = 1 << pbr->bsx.sect_size_bits;
 	clu_size = 1 << (pbr->bsx.sect_size_bits +
 			 pbr->bsx.sect_per_clus_bits);
