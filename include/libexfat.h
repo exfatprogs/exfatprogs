@@ -259,6 +259,40 @@ void exfat_init_blk_dev_info(struct exfat_blk_dev *bd);
 void exfat_deinit_blk_dev_info(struct exfat_blk_dev *bd);
 int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		struct exfat_blk_dev *bd);
+
+/* I/O Error Handling Facilities */
+
+enum exfat_what_ioerror {
+	EXFAT_IOERROR_READ,	/* [p]read() */
+	EXFAT_IOERROR_WRITE,	/* [p]write() */
+	EXFAT_IOERROR_ZERO,	/* exfat_write_zero*() or exfat_zeroout_blocks() */
+	EXFAT_IOERROR_DISCARD,	/* ioctl(..., BLK*DISCARD, ...) */
+	EXFAT_IOERROR_SYNC,	/* fsync() */
+};
+/* Convert the enum to a string of one word describing the action */
+const char *exfat_what_ioerror_str(enum exfat_what_ioerror w);
+/*
+ * I/O Error Callback Function Type
+ *
+ * err holds the errno set by the syscall. fd, ofs, size and buf are the
+ * parameters passed to the syscall. Obviously, in case of pread(), buf contains
+ * no meaningful data. In case of non-offset syscalls like read() and write(),
+ * ofs is -1. If the operation does not involve data range(in case of fsync()),
+ * ofs and size are passed as negative values. If the operation does not involve
+ * data(in case of exfat_write_zero*() and exfat_*_blocks()), buf is passed as
+ * NULL. ctx is the user context set with exfat_set_ioerror_callback().
+ */
+typedef void(*exfat_ioerror_callback_t)(enum exfat_what_ioerror what, int err,
+		int fd, off_t ofs, off_t size, const void *buf, void *ctx);
+/*
+ * Set the callback function for handling I/O errors
+ *
+ * The function will be called from the library I/O wrappers including
+ * exfat_read*(), exfat_write*(), exfat_fsync() and exfat_discard_blocks() when
+ * the underlying syscall returns an error. Set cb to NULL to disable callbacks.
+ */
+void exfat_set_ioerror_callback(exfat_ioerror_callback_t cb, void *ctx);
+
 /*
  * Load the requested size of data from the file onto buf
  *

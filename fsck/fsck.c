@@ -2008,6 +2008,30 @@ unrec_mbr:
 	return 0;
 }
 
+static void fsck_ioerror_callback(enum exfat_what_ioerror what, int err,
+		int fd, off_t ofs, off_t size, const void *buf, void *ctx)
+{
+	const char *w_str;
+
+	if (fd != exfat_fsck.exfat->blk_dev->dev_fd)
+		return;
+
+	/* prevent recursive callbacks */
+	exfat_set_ioerror_callback(NULL, NULL);
+
+	w_str = exfat_what_ioerror_str(what);
+	assert(w_str != NULL);
+	exfat_err("ERROR: I/O error %d at %" PRIdMAX ", length %" PRIdMAX ", %s\n",
+			err, (intmax_t)ofs, (intmax_t)size, w_str);
+
+	exfat_fsync(exfat_fsck.exfat->blk_dev->dev_fd);
+
+	exit(FSCK_EXIT_OPERATION_ERROR);
+	/* Shut compiler up */
+	(void)buf;
+	(void)ctx;
+}
+
 int main(int argc, char * const argv[])
 {
 	struct fsck_user_input ui;
@@ -2166,6 +2190,8 @@ int main(int argc, char * const argv[])
 		goto err;
 	}
 
+	exfat_set_ioerror_callback(fsck_ioerror_callback, NULL);
+
 	exfat_debug("verifying root directory...\n");
 	ret = exfat_root_dir_check(&exfat_fsck);
 	if (ret) {
@@ -2190,6 +2216,8 @@ int main(int argc, char * const argv[])
 		exfat_fsck.dirty = true;
 		exfat_fsck.dirty_fat = true;
 	}
+
+	exfat_set_ioerror_callback(NULL, NULL);
 
 	if (exfat_fsck.options & FSCK_OPTS_REPAIR_WRITE) {
 		ret = write_bitmap(&exfat_fsck);

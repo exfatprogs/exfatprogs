@@ -641,6 +641,46 @@ out:
 	return ret;
 }
 
+static exfat_ioerror_callback_t ioerror_cb;
+static void *ioerror_cb_ctx;
+static bool ioerror_entered;
+
+const char *exfat_what_ioerror_str(enum exfat_what_ioerror w)
+{
+	switch (w) {
+	case EXFAT_IOERROR_READ:	return "read";
+	case EXFAT_IOERROR_WRITE:	return "write";
+	case EXFAT_IOERROR_ZERO:	return "zeroing";
+	case EXFAT_IOERROR_DISCARD:	return "discard";
+	case EXFAT_IOERROR_SYNC:	return "sync";
+	}
+	return NULL;
+}
+
+void exfat_set_ioerror_callback(exfat_ioerror_callback_t cb, void *ctx)
+{
+	ioerror_cb = cb;
+	ioerror_cb_ctx = ctx;
+}
+
+/* Make sure errno is preserved before calling it! */
+static void do_ioerror_callback(enum exfat_what_ioerror what, int fd, off_t ofs,
+		off_t size, const void *buf)
+{
+	int saved_errno;
+
+	if (ioerror_cb == NULL)
+		return;
+	/* prevent recursive callback */
+	assert(!ioerror_entered);
+
+	ioerror_entered = true;
+	saved_errno = errno;
+	ioerror_cb(what, saved_errno, fd, ofs, size, buf, ioerror_cb_ctx);
+	errno = saved_errno;
+	ioerror_entered = false;
+}
+
 ssize_t exfat_read(int fd, void *buf, size_t size_in, off_t offset)
 {
 	int ret;
@@ -682,6 +722,7 @@ int exfat_read2(int fd, void *buf, off_t *size, off_t *offset)
 			io_stat.err |= EXFAT_IOSTAT_READ;
 #endif
 			ret = -errno;
+			do_ioerror_callback(EXFAT_IOERROR_READ, fd, *offset, rem, m);
 			goto out;
 		}
 		assert((size_t)size_read <= rem);
@@ -749,14 +790,15 @@ int exfat_write2(int fd, const void *buf, off_t *size, off_t *offset)
 			/* the dark corner of POSIX: we mirror glibc's defence mechanism here */
 			exfat_debug("pwrite() returned zero. This VFS is doing something fishy!");
 			ret = -EIO;
-			goto out;
+			errno = EIO;
+			goto callback;
 		}
 		if (size_written < 0) {
 #if !EXFAT_NO_IOSTATS
 			io_stat.err |= EXFAT_IOSTAT_WRITE;
 #endif
 			ret = -errno;
-			goto out;
+			goto callback;
 		}
 		assert((size_t)size_written <= rem);
 
@@ -769,6 +811,10 @@ int exfat_write2(int fd, const void *buf, off_t *size, off_t *offset)
 		if (*offset >= 0)
 			*offset += size_written;
 	}
+	goto out;
+
+callback:
+	do_ioerror_callback(EXFAT_IOERROR_WRITE, fd, *offset, rem, m);
 out:
 #if !EXFAT_NO_IOSTATS
 	exfat_getts(&ts_b);
@@ -827,6 +873,13 @@ int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs)
 			io_stat.err |= EXFAT_IOSTAT_WRITE;
 #endif
 			ret = -EIO;
+			/*
+			 * The callback could see a different errno than EIO
+			 * whilst the function returns -EIO...
+			 */
+			if (wsize == 0)
+				errno = EIO;
+			do_ioerror_callback(EXFAT_IOERROR_ZERO, fd, offset, size, NULL);
 			goto out;
 		}
 
@@ -860,6 +913,8 @@ int exfat_fsync(int fd)
 	exfat_getts(&ts_a);
 #endif
 	ret = fsync(fd);
+	if (ret)
+		do_ioerror_callback(EXFAT_IOERROR_SYNC, fd, -1, -1, NULL);
 #if !EXFAT_NO_IOSTATS
 	exfat_getts(&ts_b);
 
@@ -916,7 +971,11 @@ static int issue_blockrange_ioctl(int fd, int cmd, uint64_t start, uint64_t len)
 int exfat_discard_blocks(int fd, uint64_t start, uint64_t len)
 {
 #ifdef BLKDISCARD
-	return issue_blockrange_ioctl(fd, BLKDISCARD, start, len);
+	int ret = issue_blockrange_ioctl(fd, BLKDISCARD, start, len);
+
+	if (ret)
+		do_ioerror_callback(EXFAT_IOERROR_DISCARD, fd, start, len, NULL);
+	return ret;
 #else
 	return ENOSYS;
 #endif
@@ -925,7 +984,11 @@ int exfat_discard_blocks(int fd, uint64_t start, uint64_t len)
 int exfat_secerase_blocks(int fd, uint64_t start, uint64_t len)
 {
 #ifdef BLKSECDISCARD
-	return issue_blockrange_ioctl(fd, BLKSECDISCARD, start, len);
+	int ret = issue_blockrange_ioctl(fd, BLKSECDISCARD, start, len);
+
+	if (ret)
+		do_ioerror_callback(EXFAT_IOERROR_DISCARD, fd, start, len, NULL);
+	return ret;
 #else
 	return ENOSYS;
 #endif
@@ -934,7 +997,11 @@ int exfat_secerase_blocks(int fd, uint64_t start, uint64_t len)
 int exfat_zeroout_blocks(int fd, uint64_t start, uint64_t len)
 {
 #ifdef BLKZEROOUT
-	return issue_blockrange_ioctl(fd, BLKZEROOUT, start, len);
+	int ret = issue_blockrange_ioctl(fd, BLKZEROOUT, start, len);
+
+	if (ret)
+		do_ioerror_callback(EXFAT_IOERROR_ZERO, fd, start, len, NULL);
+	return ret;
 #else
 	return ENOSYS;
 #endif
