@@ -747,7 +747,7 @@ static ssize_t read_stream(int fd, void *buf, size_t len)
 
 static int restore_from_stdin(struct exfat2img *ei)
 {
-	int in_fd, ret = 0;
+	int ret = 0;
 	unsigned char cc;
 	unsigned int clu, end_clu;
 	unsigned int cc_clu_count;
@@ -757,13 +757,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 	off_t in_start_off;
 	size_t len;
 
-	in_fd = STDIN_FILENO; /* POSIX spec mandates stdin == 0 */
-	if (in_fd < 0) {
-		exfat_err("failed to get fd from stdin\n");
-		return in_fd;
-	}
-
-	if (read_stream(in_fd, &ei_hdr, sizeof(ei_hdr)) != (ssize_t)sizeof(ei_hdr)) {
+	if (read_stream(STDIN_FILENO, &ei_hdr, sizeof(ei_hdr)) != (ssize_t)sizeof(ei_hdr)) {
 		exfat_err("failed to read a header\n");
 		return -EIO;
 	}
@@ -787,7 +781,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 	out_end_off_excl = le32_to_cpu(ei_hdr.heap_clus_offset);
 	while (out_start_off < out_end_off_excl) {
 		len = MIN(out_end_off_excl - out_start_off, clus_size);
-		if (read_stream(in_fd, ei->dump_cluster, len) != (ssize_t)len) {
+		if (read_stream(STDIN_FILENO, ei->dump_cluster, len) != (ssize_t)len) {
 			exfat_err("failed to read first meta region. %llu ~ %llu\n",
 				  (unsigned long long)in_start_off,
 				  (unsigned long long)in_start_off + len);
@@ -810,7 +804,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 	/* restore heap clusters */
 	clu = 0;
 	while (clu < le32_to_cpu(ei_hdr.cluster_count)) {
-		if (read_stream(in_fd, &cc, sizeof(cc)) != (ssize_t)sizeof(cc)) {
+		if (read_stream(STDIN_FILENO, &cc, sizeof(cc)) != (ssize_t)sizeof(cc)) {
 			exfat_err("failed to read cc at %llu\n",
 				  (unsigned long long)in_start_off);
 			ret = -EIO;
@@ -819,7 +813,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 		in_start_off += 1;
 
 		if (cc == EI_CC_COPY_2 || cc == EI_CC_SKIP_2) {
-			if (read_stream(in_fd, &t_cc_clu_count, EI_CC_PAYLOAD_LEN) !=
+			if (read_stream(STDIN_FILENO, &t_cc_clu_count, EI_CC_PAYLOAD_LEN) !=
 			    (ssize_t)EI_CC_PAYLOAD_LEN) {
 				exfat_err("failed to read cc cluster count at %llu\n",
 					  (unsigned long long)in_start_off);
@@ -840,7 +834,7 @@ static int restore_from_stdin(struct exfat2img *ei)
 		if (cc == EI_CC_COPY_1 || cc == EI_CC_COPY_2) {
 			end_clu = clu + cc_clu_count;
 			while (clu < end_clu) {
-				if (read_stream(in_fd, ei->dump_cluster,
+				if (read_stream(STDIN_FILENO, ei->dump_cluster,
 						clus_size) != (ssize_t)clus_size) {
 					exfat_err("failed to read range %llu ~ %llu\n",
 						  (unsigned long long)in_start_off,
