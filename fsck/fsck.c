@@ -287,7 +287,7 @@ static int root_check_clus_chain(struct exfat *exfat,
 		exfat_bitmap_set(exfat->alloc_bitmap, clus);
 
 		if (exfat_get_inode_next_clus(exfat, node, clus, &next)) {
-			exfat_err("ERROR: failed to read the fat entry of root");
+			exfat_err("ERROR: failed to read the fat entry of root\n");
 			goto out_trunc;
 		}
 
@@ -1790,7 +1790,7 @@ static int rescue_orphan_clusters(struct exfat_fsck *fsck)
 	/* build a template dentry set */
 	err = exfat_build_file_dentry_set(exfat, name, 0, &dset, &dcount);
 	if (err) {
-		exfat_err("failed to create a temporary file in LOST+FOUNDn");
+		exfat_err("failed to create a temporary file in LOST+FOUND\n");
 		goto out;
 	}
 	dset[1].dentry.stream.flags |= EXFAT_SF_CONTIGUOUS;
