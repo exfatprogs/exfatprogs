@@ -2106,13 +2106,17 @@ int main(int argc, char * const argv[])
 		}
 	}
 
-	show_version();
+	if (version_only) {
+		show_version();
+		exit(FSCK_EXIT_SYNTAX_ERROR);
+	}
+	if (!(ui.options & FSCK_OPTS_REPAIR_AUTO))
+		show_version();
+
 	if (optind != argc - 1 ||
 	    (ui.options & FSCK_OPTS_REPAIR_ASK && ui.options & FSCK_OPTS_PROGRESS_BAR))
 		usage(argv[0]);
 
-	if (version_only)
-		exit(FSCK_EXIT_SYNTAX_ERROR);
 	if (ui.options & FSCK_OPTS_REPAIR_WRITE)
 		ui.ei.writeable = true;
 	else {
