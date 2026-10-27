@@ -3,8 +3,11 @@ noinst_LIBRARIES = libexfat.a
 
 libexfat_a_SOURCES = libexfat.c exfat_fs.c exfat_dir.c utils.c
 
-check_PROGRAMS = tests/suite0000-bitmap tests/suite0001-parse
-TESTS = tests/suite0000-bitmap tests/suite0001-parse
+check_PROGRAMS = tests/suite0000-bitmap tests/suite0000-dump-arch tests/suite0001-parse
+TESTS = tests/suite0000-bitmap tests/suite0000-dump-arch tests/suite0001-parse
+
+tests_suite0000_dump_arch_SOURCES = tests/suite0000-dump-arch.c
+tests_suite0000_dump_arch_LDADD = libexfat.a
 
 tests_suite0000_bitmap_SOURCES = tests/suite0000-bitmap.c
 tests_suite0000_bitmap_LDADD = libexfat.a
