@@ -12,6 +12,7 @@ struct exfat;
 struct exfat_inode;
 struct exfat_dentry_loc;
 struct buffer_desc;
+struct exfat_name_set;
 
 struct exfat_de_iter {
 	struct exfat		*exfat;
@@ -29,6 +30,7 @@ struct exfat_de_iter {
 	unsigned int		invalid_name_num;
 
 	char *name_hash_bitmap;		/* bitmap of children's name hashes */
+	struct exfat_name_set	*name_set;	/* strong hashes of the names */
 };
 
 struct exfat_lookup_filter {
