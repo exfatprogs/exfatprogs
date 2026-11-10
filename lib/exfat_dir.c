@@ -537,6 +537,14 @@ static int filter_lookup_file(struct exfat_de_iter *de_iter,
 	name = (__le16 *)param;
 	name_len = (int)exfat_utf16_len(name, PATH_MAX);
 
+	/*
+	 * The name comparison below doesn't reach the terminating NUL when
+	 * name_len is a multiple of ENTRY_NAME_MAX, so a name would match any
+	 * longer name it is a prefix of. Check the length first.
+	 */
+	if (stream_de->stream_name_len != name_len)
+		return 1;
+
 	if (file_de->dentry.file.num_ext <
 		1 + (name_len + ENTRY_NAME_MAX - 1) / ENTRY_NAME_MAX)
 		return 1;
