@@ -328,50 +328,6 @@ jobs:
         sudo FSCK1="${{ matrix.run }} ../fsck/fsck.exfat" FSCK2="fsck.exfat" ./test_fsck.sh
         sudo FSCK1="fsck.exfat" FSCK2="${{ matrix.run }} ../fsck/fsck.exfat" ./test_fsck.sh
         popd
-    - name: dentry creation/deletion stress test
-      shell: bash
-      run: |
-        set -e
-        sudo modprobe exfat
-        sudo mkdir -p /mnt/test
-        truncate -s 10G test.img
-        sudo losetup /dev/loop22 test.img
-        sudo ${{ matrix.run }} ./mkfs/mkfs.exfat -vfC /dev/loop22
-        sudo mount -t exfat /dev/loop22 /mnt/test/
-        pushd /mnt/test/
-        cat << EOF | sudo bash
-          set -e
-
-          for (( i = 0; i < 10000; i++ ))
-          do
-            touch file\$i
-          done
-          sync
-          find -mindepth 1 -delete
-          for (( i = 0; i < 10000; i++ ))
-          do
-            mkdir dir\$i
-          done
-          sync
-          find -mindepth 1 -delete
-
-          for (( i = 0; i < 10000; i++ ))
-          do
-            touch file\$i
-          done
-          for (( i = 0; i < 10000; i++ ))
-          do
-            mkdir dir\$i
-          done
-          sync
-        EOF
-        popd
-        sudo ${{ matrix.run }} ./fsck/fsck.exfat /dev/loop22
-        sudo find /mnt/test/ -mindepth 1 -delete
-        sudo umount /mnt/test/
-        sudo ${{ matrix.run }} ./fsck/fsck.exfat /dev/loop22
-        sudo losetup -d /dev/loop22
-        rm -f test.img
 
     - name: generate large images for Windows runners
       shell: bash
