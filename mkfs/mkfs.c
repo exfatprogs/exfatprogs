@@ -132,7 +132,6 @@ static int build_gpt(struct exfat_blk_dev *bd, const struct exfat_user_input *ui
 	int ret = 0;
 	unsigned long long req_size = 0;
 	unsigned long long first_usable, first_aligned, last_usable, last_aligned, part_sec_cnt;
-	uint16_t serial;
 	uint8_t *mbr = calloc(1, sector);
 	struct exfat_gpt_header *head_main = calloc(1, bd->sector_size);
 	struct exfat_gpt_header *head_backup = calloc(1, bd->sector_size);
@@ -237,7 +236,6 @@ static int build_gpt(struct exfat_blk_dev *bd, const struct exfat_user_input *ui
 	/* The first GPT entry */
 
 	memcpy(&arr[0].partition_type_guid, EXFAT_GPT_PART_TYPE, 16);
-	memcpy(&serial, &arr[0].partition_type_guid, 2);
 	if (finfo.gpt.has_part_guid)
 		memcpy(&arr[0].unique_partition_guid, &finfo.gpt.part_guid, EXFAT_GUID_LEN);
 	else
@@ -247,7 +245,7 @@ static int build_gpt(struct exfat_blk_dev *bd, const struct exfat_user_input *ui
 
 	/* Protective MBR */
 	exfat_put_bootstrap_code(ui->bootcode_msg, mbr, 0);
-	exfat_put_mbr_partition(bd, mbr, serial, 1, false, 0xEE, 0xFFFFFF);
+	exfat_put_mbr_partition(bd, mbr, 0, 1, false, 0xEE, 0xFFFFFF);
 	mbr[510] = 0x55;
 	mbr[511] = 0xAA;
 
