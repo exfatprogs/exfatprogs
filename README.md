@@ -11,10 +11,10 @@ under the GNU General Public License Version 2.
 Install prerequisite packages:
 ```
 For Debian, Ubuntu:
-    sudo apt-get install autoconf libtool automake make pkgconf libblkid-dev
+    sudo apt-get install autoconf automake bison libtool make pkgconf libblkid-dev
 
 For Fedora, RHEL:
-    sudo dnf install autoconf automake libtool libblkid-devel
+    sudo dnf install autoconf automake bison libtool make pkgconf libblkid-devel
 ```
 
 Build steps:
