@@ -386,6 +386,8 @@ DECLARE_PARSE_NUM(long, exfat_parse_long);
 DECLARE_PARSE_NUM(long long, exfat_parse_longlong);
 #undef DECLARE_PARSE_NUM
 
+int exfat_parse_guid(__u8 *guid, const char *input, const char *type);
+
 /*
  * Parse a software version string
  *

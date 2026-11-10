@@ -1294,14 +1294,17 @@ out:
 	return err;
 }
 
-static int set_guid(__u8 *guid, const char *input)
+int exfat_parse_guid(__u8 *guid, const char *input, const char *type)
 {
 	__u8 buf[EXFAT_GUID_LEN];
 	int i, j, zero_len = 0;
 	int len = strlen(input);
 
+	if (type == NULL)
+		type = "GUID";
+
 	if (len != EXFAT_GUID_LEN * 2 && len != EXFAT_GUID_LEN * 2 + 4) {
-		exfat_err("invalid format for volume guid\n");
+		exfat_err("invalid format for %s\n", type);
 		return -EINVAL;
 	}
 
@@ -1318,7 +1321,7 @@ static int set_guid(__u8 *guid, const char *input)
 			 (i == 8 || i == 13 || i == 18 || i == 23))
 			continue;
 		else {
-			exfat_err("invalid character '%c' for volume GUID\n", ch);
+			exfat_err("invalid character '%c' for %s\n", ch, type);
 			return -EINVAL;
 		}
 
@@ -1334,7 +1337,7 @@ static int set_guid(__u8 *guid, const char *input)
 	}
 
 	if (zero_len == EXFAT_GUID_LEN * 2) {
-		exfat_err("%s is invalid for volume GUID\n", input);
+		exfat_err("%s is invalid for %s\n", input, type);
 		return -EINVAL;
 	}
 
@@ -1398,7 +1401,7 @@ int __exfat_set_volume_guid(struct exfat_dentry *dentry, const char *guid)
 	memset(dentry, 0, sizeof(*dentry));
 	dentry->type = EXFAT_GUID;
 
-	err = set_guid(dentry->dentry.guid.guid, guid);
+	err = exfat_parse_guid(dentry->dentry.guid.guid, guid, "volume GUID");
 	if (err)
 		return err;
 
