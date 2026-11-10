@@ -388,6 +388,7 @@ static void exfat_setup_boot_sector(struct pbr *ppbr,
 	pbsx->fs_version[0] = 0;
 	pbsx->fs_version[1] = 1;
 	pbsx->phy_drv_no = 0x80;
+	pbsx->perc_in_use = 0xFF;
 	memset(pbsx->reserved2, 0, 7);
 
 	memset(ppbr->boot_code, 0, 390);
@@ -848,31 +849,34 @@ static int exfat_create_root_dir(struct exfat_blk_dev *bd,
 static void usage(void)
 {
 	fputs("Usage: mkfs.exfat\n"
-		"\t-L | --volume-label=label                              Set volume label\n"
-		"\t-U | --volume-guid=guid                                Set volume GUID\n"
-		"\t-s | --sector-size=size(or suffixed by 'K')            Specify sector size\n"
-		"\t-c | --cluster-size=size(or suffixed by 'K' or 'M')    Specify cluster size\n"
-		"\t-b | --boundary-align=size(or suffixed by 'K' or 'M')  Specify boundary alignment\n"
-		"\t     --pack-bitmap                                     Move bitmap into FAT segment\n"
-		"\t     --upcase=file                                     Specify up-case table binary file\n"
-		"\t     --bootcode-msg=message                            Specify custom message in MBR bootstrap code\n"
-		"\t-P | --partition-table=auto|none|mbr|gpt               Specify partition table\n"
-		"\t-f | --full-format                                     Full format\n"
-		"\t-F | --force                                           Overwrite an existing non-exFAT filesystem\n"
-		"\t-C | --check-written                                   Verify written filesystem metadata by read-back\n"
-		"\t-K | --no-discard                                      Do not discard blocks\n"
-		"\t-V | --version                                         Show version\n"
-		"\t-q | --quiet                                           Print only errors\n"
-		"\t-v | --verbose                                         Print debug\n"
-		"\t-h | --help                                            Show help\n",
+		"\t-L | --volume-label=label                 Set volume label\n"
+		"\t-U | --volume-guid=guid                   Set volume GUID\n"
+		"\t-s | --sector-size=size[K]                Specify sector size\n"
+		"\t-c | --cluster-size=size[K|M]             Specify cluster size\n"
+		"\t-b | --boundary-align=size[K|M]           Specify boundary alignment\n"
+		"\t     --pack-bitmap                        Move bitmap into FAT segment\n"
+		"\t     --upcase=file                        Specify up-case table binary file\n"
+		"\t     --bootcode-msg=message               Specify custom message in MBR\n"
+		"\t                                          bootstrap code\n"
+		"\t-P | --partition-table=auto|none|mbr|gpt  Specify partition table\n"
+		"\t-f | --full-format                        Full format\n"
+		"\t-F | --force                              Overwrite existing filesystem\n"
+		"\t-C | --check-written                      Verify written data by read-back\n"
+		"\t-K | --no-discard                         Do not discard blocks\n"
+		"\t-V | --version                            Show version\n"
+		"\t-q | --quiet                              Print only errors\n"
+		"\t-v | --verbose                            Print debug\n"
+		"\t-h | --help                               Show help\n",
 		stderr);
 
 	exit(EXIT_FAILURE);
 }
 
-#define PACK_BITMAP	(CHAR_MAX + 1)
-#define UPCASE_FILE	(CHAR_MAX + 2)
-#define BOOTCODE_MSG	(CHAR_MAX + 3)
+enum longopt_num {
+	LON_PACK_BITMAP = CHAR_MAX + 1,
+	LON_UPCASE_FILE,
+	LON_BOOTCODE_MSG,
+};
 
 static const struct option opts[] = {
 	{"volume-label",	required_argument,	NULL,	'L' },
@@ -880,9 +884,9 @@ static const struct option opts[] = {
 	{"sector-size",		required_argument,	NULL,	's' },
 	{"cluster-size",	required_argument,	NULL,	'c' },
 	{"boundary-align",	required_argument,	NULL,	'b' },
-	{"upcase",		required_argument,	NULL,	UPCASE_FILE },
-	{"bootcode-msg",	required_argument,	NULL,	BOOTCODE_MSG },
-	{"pack-bitmap",		no_argument,		NULL,	PACK_BITMAP },
+	{"upcase",		required_argument,	NULL,	LON_UPCASE_FILE },
+	{"bootcode-msg",	required_argument,	NULL,	LON_BOOTCODE_MSG },
+	{"pack-bitmap",		no_argument,		NULL,	LON_PACK_BITMAP },
 	{"full-format",		no_argument,		NULL,	'f' },
 	{"force",		no_argument,		NULL,	'F' },
 	{"check-written",	no_argument,		NULL,	'C' },
@@ -1132,29 +1136,138 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd, struct exfat_user_inp
 	return 0;
 }
 
+/*
+ * The block discarding/zeroing happens in smaller batches so it can be
+ * interrupted prematurely
+ */
+static int iterate_over_disk(int fd, uint64_t len, const uint64_t step,
+		int (*foreach_step)(int fd, uint64_t start, uint64_t len),
+		const char *human_name, const char *api_name)
+{
+	uint64_t offset = 0;
+	uint64_t tmp_step;
+	int err;
+
+	/* The same check seen in the kernel */
+	assert(step && (step & 511) == 0);
+
+	while (offset < len) {
+		tmp_step = len - offset;
+		if (step < tmp_step)
+			tmp_step = step;
+
+		err = foreach_step(fd, offset, tmp_step);
+		/*
+		 * We intentionally ignore errors from the ioctl. It is not
+		 * necessary for the mkfs functionality but just an
+		 * optimization. However we should stop on error.
+		 */
+		if (err == 0) {
+			if (offset == 0) {
+				if (human_name != NULL)
+					exfat_info("%s blocks: ", human_name);
+				exfat_debug("%s: ", api_name);
+			}
+			exfat_trace(0, "%"PRIu64"-%"PRIu64"\n", offset, offset + tmp_step);
+			fflush(stdout);
+		} else {
+			exfat_debug("%s: %s\n", api_name, strerror(err));
+			if (offset > 0 && human_name != NULL)
+				exfat_info("\n");
+			return err;
+		}
+
+		offset += tmp_step;
+	}
+	if (offset > 0 && human_name != NULL)
+		exfat_info("done\n");
+
+	return 0;
+}
+
 static int exfat_zero_out_disk(struct exfat_blk_dev *bd,
-		struct exfat_user_input *ui)
+		struct exfat_user_input *ui, const bool quiet)
 {
 	int ret = 0;
 	bool mapped = false;
 	const void *zm = NULL;
-	const size_t iosize = ui->cluster_size;
+	size_t iosize;
 	unsigned long long target_zerolen;
+#ifdef POSIX_FADV_NOREUSE
+	bool issued_fadvise = false;
+#endif
 
-	assert(iosize > 0);
+	assert(ui->cluster_size > 0);
 
 	if (ui->quick)
 		target_zerolen = MIN(bd->size, EXFAT_HEAD_ZERO_OUT);
-	else
+	else {
 		target_zerolen = bd->size;
+#ifdef POSIX_FADV_NOREUSE
+		/*
+		 * Unfortunately, Linux kernel hadn't supported this fadvise()
+		 * op properly until quite recently. See posix_fadvise(2).
+		 *
+		 *   - relevant code in kernel: vma_has_recency()
+		 *   - currently, the offset and length are ignored by the kernel
+		 */
+		issued_fadvise = posix_fadvise(bd->dev_fd, 0, 0, POSIX_FADV_NOREUSE) == 0;
+#endif
+	}
 
-	exfat_info("Zeroing out %llu bytes: ", target_zerolen);
-	fflush(stdout);
+	if (!quiet) {
+		exfat_info("Zeroing out %llu bytes: ", target_zerolen);
+		fflush(stdout);
+	}
 
+	if (bd->isblk) {
+/*
+ * When mmap() fails, the memory will be calloc()'d so we can't be so generous
+ * here.
+ *
+ * The write speed of SSDs goes up to few TB's. 32MB may seem so small, but
+ * that's still 32K syscalls/NVME commands per second, which is not that much on
+ * modern systems.
+ *
+ * Can't go over 64MB because modern consumer HDDs are still stuck at ~100MB/s.
+ */
+		if (bd->size >= 1024ULL * GB)
+			/* >= 1TB: 32MB */
+			iosize = 32 * MB;
+		else if (bd->size >= 256ULL * GB)
+			/* >= 256GB: 16MB */
+			iosize = 16 * MB;
+		else if (bd->size >= 64ULL * GB)
+			/* >= 64GB: 8MB */
+			iosize = 8 * MB;
+		else
+			/* 1MB("legacy" devices) */
+			iosize = 1 * MB;
+
+/*
+ * Notes on cache coherency issues with BLKZEROOUT ioctl
+ *
+ * Historically, it seems that the Linux kernel suffered from cache coherency
+ * issues with BLKZEROOUT. However, it shouldn't affect mkfs.exfat because mkfs
+ * doesn't read the existing data on the target device after performing foreign
+ * filesystem detection. Except for the case of -C option, mkfs only writes to
+ * the device. For -C option, mkfs accesses the device via O_DIRECT so it's not
+ * affected by the cache coherency issue.
+ *
+ * Link: https://lwn.net/Articles/702632/
+ */
+		ret = iterate_over_disk(bd->dev_fd, target_zerolen, iosize,
+				exfat_zeroout_blocks, NULL, "BLKZEROOUT");
+		if (ret == 0)
+			goto done;
+	}
+
+	/* File and ENOTTY fallback: this is buffered I/O */
+	iosize = ui->cluster_size;
 	ret = exfat_write_zero2(bd->dev_fd, target_zerolen, 0, iosize);
 	if (ret)
 		goto out;
-
+done:
 	if (ui->verify) {
 		off_t ofs = 0, rem = target_zerolen;
 
@@ -1182,9 +1295,28 @@ out:
 	if (ret)
 		exfat_err("write failed(errno : %d)\n", errno);
 	else {
-		exfat_info("done\n");
+		if (!quiet)
+			exfat_info("done\n");
 		exfat_debug("zero out written size : %llu\n", target_zerolen);
 	}
+
+#ifdef POSIX_FADV_NOREUSE
+	/*
+	 * Restore the default fmode so that the volume structures(header,
+	 * bitmap, upcase table ...) are cached as usual. The fs implementation
+	 * would appreciate it when the volume is mounted immediately
+	 * afterwards.
+	 *
+	 * The #ifdef checks against POSIX_FADV_NOREUSE, but POSIX_FADV_NORMAL
+	 * is used here. This is intentional - it wouldn't make sense for the
+	 * platform to support POSIX_FADV_NOREUSE but not POSIX_FADV_NORMAL.
+	 * ie, this shouldn't happen:
+	 *
+	 *   defined(POSIX_FADV_NOREUSE) && !defined(POSIX_FADV_NORMAL)
+	 */
+	if (issued_fadvise)
+		posix_fadvise(bd->dev_fd, 0, 0, POSIX_FADV_NORMAL);
+#endif
 
 	return ret;
 }
@@ -1267,53 +1399,17 @@ alloc_err:
 }
 
 static void exfat_discard_dev(struct exfat_blk_dev *bd,
-		struct exfat_user_input *ui)
+		struct exfat_user_input *ui, const bool quiet)
 {
-	uint64_t offset = 0;
-	uint64_t tmp_step;
-	int err;
-	/* Discard the device 2G at a time */
-	const uint64_t step = 2ULL << 30;
-	const uint64_t count = bd->num_sectors * bd->sector_size;
-
 	if (!ui->discard || !bd->isblk) {
 		exfat_debug("no-discard requested or the device is a file\n");
 		return;
 	}
 
-	/*
-	 * The block discarding happens in smaller batches so it can be
-	 * interrupted prematurely
-	 */
-	while (offset < count) {
-		tmp_step = count - offset;
-		if (step < tmp_step)
-			tmp_step = step;
-
-		err = exfat_discard_blocks(bd->dev_fd, offset, tmp_step);
-		/*
-		 * We intentionally ignore errors from the discard ioctl. It is
-		 * not necessary for the mkfs functionality but just an
-		 * optimization. However we should stop on error.
-		 */
-		if (err == 0) {
-			if (offset == 0) {
-				exfat_info("Discarding blocks: ");
-				exfat_debug("BLKDISCARD: ");
-			}
-			exfat_debug("%"PRIu64"-%"PRIu64" ", offset, offset + tmp_step);
-			fflush(stdout);
-		} else {
-			exfat_debug("BLKDISCARD: %s\n", strerror(err));
-			if (offset > 0)
-				exfat_info("\n");
-			return;
-		}
-
-		offset += tmp_step;
-	}
-	if (offset > 0)
-		exfat_info("done\n");
+	/* Discard the device 2G at a time */
+	iterate_over_disk(bd->dev_fd, bd->size, 2ULL << 30,
+			exfat_discard_blocks, quiet ? NULL : "Discarding",
+			"BLKDISCARD");
 }
 
 static int make_exfat(struct exfat_blk_dev *bd, struct exfat_user_input *ui)
@@ -1512,13 +1608,13 @@ int main(int argc, char *argv[])
 			}
 			ui.boundary_align = ret;
 			break;
-		case UPCASE_FILE:
+		case LON_UPCASE_FILE:
 			ui.upcase.file = optarg;
 			break;
-		case PACK_BITMAP:
+		case LON_PACK_BITMAP:
 			ui.pack_bitmap = true;
 			break;
-		case BOOTCODE_MSG:
+		case LON_BOOTCODE_MSG:
 			ui.bootcode_msg = optarg;
 			/* A long message will just get truncated silently. */
 			break;
@@ -1557,7 +1653,10 @@ int main(int argc, char *argv[])
 			quiet = true;
 			break;
 		case 'v':
-			print_level = EXFAT_DEBUG;
+			if (print_level < EXFAT_DEBUG)
+				print_level = EXFAT_DEBUG;
+			else
+				print_level++;
 			break;
 		case '?':
 		case 'h':
@@ -1649,13 +1748,13 @@ int main(int argc, char *argv[])
 	if (ret)
 		goto out;
 
-	exfat_discard_dev(&bd, &ui);
+	exfat_discard_dev(&bd, &ui, quiet);
 	/*
 	 * Zeroing out still needs to be conducted as per JESD84-B51 6.6.9:
 	 * "content of an explicitly erased memory range shall be ‘0’ or ‘1’
 	 * depending on different memory technology,"
 	 */
-	ret = exfat_zero_out_disk(&bd, &ui);
+	ret = exfat_zero_out_disk(&bd, &ui, quiet);
 	if (ret)
 		goto out;
 
@@ -1667,7 +1766,8 @@ int main(int argc, char *argv[])
 		gpt_header_to_le(finfo.gpt.head_main);
 		gpt_header_to_le(finfo.gpt.head_backup);
 
-		if (!exfat_write_mkfs_data_regions(&bd, finfo.gpt.regions) || fsync(bd.dev_fd)) {
+		if (!exfat_write_mkfs_data_regions(&bd, finfo.gpt.regions) ||
+				exfat_fsync(bd.dev_fd)) {
 			exfat_err("Failed to write GPT regions: %s\n", strerror(errno));
 			ret = -1;
 			goto out;
@@ -1697,7 +1797,7 @@ int main(int argc, char *argv[])
 
 	if (!quiet)
 		exfat_info("Synchronizing...\n");
-	ret = fsync(bd.dev_fd);
+	ret = exfat_fsync(bd.dev_fd);
 	if (ret) {
 		exfat_err("Sync failed: %s\n", strerror(errno));
 		goto out;
@@ -1719,7 +1819,8 @@ out:
 
 		exfat_zero_mkfs_data_regions(finfo.gpt.regions);
 
-		if (!exfat_write_mkfs_data_regions(&bd, finfo.gpt.regions) || fsync(bd.dev_fd))
+		if (!exfat_write_mkfs_data_regions(&bd, finfo.gpt.regions) ||
+				exfat_fsync(bd.dev_fd))
 			exfat_err("Failed to wipe out GPT structures: %s\n", strerror(errno));
 	}
 
@@ -1740,6 +1841,7 @@ out:
 	}
 	else
 		exfat_err("\nexFAT format fail!\n");
+	exfat_print_iostat();
 	return ret ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 

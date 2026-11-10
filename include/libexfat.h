@@ -24,7 +24,7 @@ typedef __u32 clus_t;
 #define MIN(a, b)	((a) < (b) ? (a) : (b))
 #define MAX(a, b)	((a) > (b) ? (a) : (b))
 
-#define DIV_ROUND_UP(__i, __d)	(((__i) + (__d) - 1) / (__d))
+#define DIV_ROUND_UP(__i, __d)	((__i) / (__d) + ((__i) % (__d) != 0))
 
 #define EXFAT_MIN_NUM_SEC_VOL		(2048)
 #define EXFAT_MAX_NUM_SEC_VOL		((2 << 64) - 1)
@@ -232,7 +232,25 @@ unsigned int exfat_count_used_clusters(const void *bitmap, const size_t size,
 
 void show_version(void);
 
-wchar_t exfat_bad_char(wchar_t w);
+static inline bool exfat_bad_char(unsigned short w)
+{
+	switch (w) {
+	case 0x0022: /* QUOTATION MARK:    (") */
+	case 0x002A: /* ASTERISK:          (*) */
+	case 0x002F: /* FORWARD SLASH:     (/) */
+	case 0x003A: /* COLON:             (:) */
+	case 0x003C: /* LESS-THAN SIGN:    (<) */
+	case 0x003E: /* GREATER-THAN SIGN: (>) */
+	case 0x003F: /* QUESTION MARK:     (?) */
+	case 0x005C: /* BACKSLASH:         (\) */
+	case 0x007C: /* PIPE:              (|) */
+		return true;
+	}
+
+	/* Control characters */
+	return w < 0x0020;
+}
+
 void boot_calc_checksum(const unsigned char *sector, size_t size,
 		bool is_boot_sec, __le32 *checksum);
 void exfat_init_user_input(struct exfat_user_input *ui);
@@ -241,6 +259,40 @@ void exfat_init_blk_dev_info(struct exfat_blk_dev *bd);
 void exfat_deinit_blk_dev_info(struct exfat_blk_dev *bd);
 int exfat_get_blk_dev_info(struct exfat_user_input *ui,
 		struct exfat_blk_dev *bd);
+
+/* I/O Error Handling Facilities */
+
+enum exfat_what_ioerror {
+	EXFAT_IOERROR_READ,	/* [p]read() */
+	EXFAT_IOERROR_WRITE,	/* [p]write() */
+	EXFAT_IOERROR_ZERO,	/* exfat_write_zero*() or exfat_zeroout_blocks() */
+	EXFAT_IOERROR_DISCARD,	/* ioctl(..., BLK*DISCARD, ...) */
+	EXFAT_IOERROR_SYNC,	/* fsync() */
+};
+/* Convert the enum to a string of one word describing the action */
+const char *exfat_what_ioerror_str(enum exfat_what_ioerror w);
+/*
+ * I/O Error Callback Function Type
+ *
+ * err holds the errno set by the syscall. fd, ofs, size and buf are the
+ * parameters passed to the syscall. Obviously, in case of pread(), buf contains
+ * no meaningful data. In case of non-offset syscalls like read() and write(),
+ * ofs is -1. If the operation does not involve data range(in case of fsync()),
+ * ofs and size are passed as negative values. If the operation does not involve
+ * data(in case of exfat_write_zero*() and exfat_*_blocks()), buf is passed as
+ * NULL. ctx is the user context set with exfat_set_ioerror_callback().
+ */
+typedef void(*exfat_ioerror_callback_t)(enum exfat_what_ioerror what, int err,
+		int fd, off_t ofs, off_t size, const void *buf, void *ctx);
+/*
+ * Set the callback function for handling I/O errors
+ *
+ * The function will be called from the library I/O wrappers including
+ * exfat_read*(), exfat_write*(), exfat_fsync() and exfat_discard_blocks() when
+ * the underlying syscall returns an error. Set cb to NULL to disable callbacks.
+ */
+void exfat_set_ioerror_callback(exfat_ioerror_callback_t cb, void *ctx);
+
 /*
  * Load the requested size of data from the file onto buf
  *
@@ -280,7 +332,17 @@ int exfat_write2(int fd, const void *buf, off_t *size, off_t *offset);
 bool exfat_write_full(int fd, const void *buf, size_t size, off_t offset);
 int exfat_write_zero(int fd, off_t size, off_t offset);
 int exfat_write_zero2(int fd, off_t size, off_t offset, size_t bs);
+int exfat_fsync(int fd);
+/* BLKDISCARD wrapper */
 int exfat_discard_blocks(int fd, uint64_t start, uint64_t len);
+/*
+ * BLKSECDISCARD wrapper (for sdcards that support it)
+ *
+ * Link: https://lwn.net/Articles/395147/
+ */
+int exfat_secerase_blocks(int fd, uint64_t start, uint64_t len);
+/* BLKZEROOUT wrapper (for devices that support it) */
+int exfat_zeroout_blocks(int fd, uint64_t start, uint64_t len);
 
 size_t exfat_utf16_len(const __le16 *str, size_t max_size);
 ssize_t exfat_utf16_enc(const char *in_str, __u16 *out_str, size_t out_size);
@@ -316,7 +378,46 @@ int exfat_o2c(struct exfat *exfat, off_t device_offset,
 bool exfat_heap_clus(struct exfat *exfat, clus_t clus);
 int exfat_root_clus_count(struct exfat *exfat);
 int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs);
-int exfat_parse_ulong(const char *s, unsigned long *out);
+
+#define DECLARE_PARSE_NUM(OUT_T, NAME) int NAME(const char *s, OUT_T *out)
+DECLARE_PARSE_NUM(unsigned long, exfat_parse_ulong);
+DECLARE_PARSE_NUM(unsigned long long, exfat_parse_ulonglong);
+DECLARE_PARSE_NUM(long, exfat_parse_long);
+DECLARE_PARSE_NUM(long long, exfat_parse_longlong);
+#undef DECLARE_PARSE_NUM
+
+/*
+ * Parse a software version string
+ *
+ * Process a string until it encounters an invalid character. If at least one
+ * valid version number is parsed, output with the numbers parsed. Otherwise,
+ * return -1 and errno is set to EINVAL.
+ *
+ * Note that the function was originally implemented to parse Linux kernel
+ * version strings, which can be followed by an arbitrary user-supplied string
+ * (aka. CONFIG_LOCALVERSION). Therefore, the function stops processing when it
+ * encounters the trailing garbage(local version) in the string.
+ *
+ * For example, following strings are all valid:
+ *
+ *   "6.1.157-android14-11-gbd23337e42e7-ab14791245":	6.1.157
+ *   "6.6.77-8.el10.altarch.aarch64+64k":		6.6.77
+ *   "7.0.8-200.fc44.x86_64":				7.0.8
+ *   "6.17.0-1019-aws":					6.17.0
+ *
+ * And including(although confusingly):
+ *
+ *   "2foo.6":		2.0.0
+ *   "2.6foo.3":	2.6.0
+ *   "2.":		2.0.0
+ *   "2.6.":		2.6.0
+ *
+ * The Linux kernel versions are always in 3 numbers. However, the function also
+ * accepts version strings with 1 and 2 numbers for future use and correctness.
+ */
+int exfat_parse_swver(const char *in, unsigned short *out);
+int exfat_cmp_swver(const unsigned short *a, const unsigned short *b);
+
 int exfat_check_name(__le16 *utf16_name, int len);
 /*
  * Read back from the target device to confirm the successful write.
@@ -345,8 +446,11 @@ void exfat_close_fd_devzero(void);
  * EBADFD if exfat_open_fd_devzero() has been called successfully, or any other
  * errno set in mmap().
  *
- * Note that /dev/zero mapping do not count towards committed memory. See
- * vm.overcommit for detail.
+ * Note that /dev/zero mappings do not count towards committed memory. See
+ * vm.overcommit for detail. /dev/zero is used instead of MAP_ANONYMOUS for
+ * portability reasons(the behaviour of shared read-only anonymous mapping is
+ * not well-defined). However, on Linux, it should be equivalent to allocating
+ * memory through MAP_ANONYMOUS.
  *
  * For rw version of this function, see exfat_map_blankmem().
  */
@@ -356,7 +460,8 @@ const void *exfat_map_zeromem(const size_t len, bool *mapped);
  * zeros(e.g. allocation bitmap).
  *
  * The function has the exact same semantics as exfat_map_zeromem(), except that
- * it calls mmap() with PROT_READ|PROT_WRITE and MAP_PRIVATE.
+ * it calls mmap() with PROT_READ|PROT_WRITE and MAP_PRIVATE|MAP_NORESERVE if
+ * and only if supported by the platform.
  */
 void *exfat_map_blankmem(const size_t len, bool *mapped);
 /*
@@ -413,6 +518,12 @@ void exfat_put_bootstrap_code(const char *user_msg, void *dst, unsigned int code
 bool exfat_isatty_stdio(void);
 
 /*
+ * Print I/O statistics collected internally in libexfat to stderr if enabled
+ * with the environment variable EXFAT_PRINT_IOSTAT.
+ */
+void exfat_print_iostat(void);
+
+/*
  * Exfat Print
  */
 
@@ -421,6 +532,7 @@ extern unsigned int print_level;
 #define EXFAT_ERROR	(1)
 #define EXFAT_INFO	(2)
 #define EXFAT_DEBUG	(3)
+#define EXFAT_TRACE0	(4)
 
 #define exfat_msg(level, dir, fmt, ...)					\
 	do {								\
@@ -436,6 +548,9 @@ extern unsigned int print_level;
 #define exfat_debug(fmt, ...)	exfat_msg(EXFAT_DEBUG, stdout,		\
 					"[%s:%4d] " fmt, __func__, 	\
 					__LINE__, ##__VA_ARGS__)
+#define exfat_trace(N, fmt, ...)	exfat_msg(EXFAT_TRACE0 + (N),	\
+					stdout, "[%s:%4d] " fmt,	\
+					__func__, __LINE__, ##__VA_ARGS__)
 
 #define exfat_print_guid(f, msg, guid)					\
 		f("%s: %02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",\

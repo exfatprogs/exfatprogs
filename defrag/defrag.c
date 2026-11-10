@@ -1134,7 +1134,7 @@ int main(int argc, char *argv[])
 
 fsync_and_free:
 	/* Step 10: fsync and free allocated resources */
-	fsync(bd.dev_fd);
+	exfat_fsync(bd.dev_fd);
 
 	if (set->next_clus)
 		free(set->next_clus);
@@ -1158,5 +1158,6 @@ out:
 			exfat_info("Defragmentation has completed successfully!\n");
 	}
 
+	exfat_print_iostat();
 	return ret;
 }

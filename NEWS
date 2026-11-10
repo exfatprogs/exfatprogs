@@ -1,3 +1,38 @@
+exfatprogs 1.4.4 - released 2026-11-10
+======================================
+
+NEW FEATURES :
+ * exfatprogs: add optional I/O statistics collection for profiling
+   read, write, discard, zero-out, and sync operations.
+
+CHANGES :
+ * mkfs.exfat: increase full-format speed by using BLKZEROOUT when
+   supported, selecting larger zeroing batches, and improving quiet
+   and trace progress output.
+ * mkfs.exfat: reduce page-cache pollution during full formatting on
+   systems supporting POSIX_FADV_NOREUSE.
+
+BUG FIXES :
+ * exfatprogs: fix parsing of kernel versions and boolean environment
+   variables.
+ * mkfs.exfat: avoid memory-reservation failures when creating very
+   large allocation bitmaps.
+ * mkfs.exfat: mark the percentage of used clusters as unknown until
+   it is calculated.
+ * fsck.exfat, exfat2img, and defrag.exfat: reject malformed boot
+   sector geometry and prevent arithmetic overflows and out-of-bounds
+   reads.
+ * fsck.exfat: stop immediately on I/O errors instead of treating them
+   as filesystem inconsistencies.
+ * fsck.exfat: fix missing line breaks in error messages.
+ * fsck.exfat: avoid printing version information during automatic
+   repair with "-p" or "-a".
+ * dump.exfat: print complete file timestamps in raw and ISO formats.
+ * exfat2img: keep metadata image output on stdout free of status
+   messages.
+ * exfatprogs: correct usage text for overwrite and read-back
+   verification options.
+
 exfatprogs 1.4.3 - released 2026-08-14
 ======================================
 

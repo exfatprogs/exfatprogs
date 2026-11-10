@@ -33,6 +33,7 @@ env:
     1T 2T 3T 4T 6T 8T 16T 32T 44T 64T
   TEST_MAGIC: dd01aeee-bab0-babe-babe-deadcafebeef
 
+  UTIL_LINUX_TARBALL: util-linux-2.42.tar.xz
   UTIL_LINUX_SRC: https://www.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.tar.xz
   # xfstests generic/740 equiv
   FOREIGN_FS: |
@@ -51,7 +52,7 @@ env:
 
 jobs:
   memcheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
@@ -63,7 +64,6 @@ jobs:
         sudo apt-get --update --quiet --yes install \
              linux-headers-$(uname -r) xz-utils \
              valgrind libblkid-dev ${{ matrix.cc }}
-        sudo apt-get install -y linux-modules-extra-$(uname -r)
     - name: Build
       run: |
         export "CC=${{ matrix.cc }}"
@@ -79,9 +79,10 @@ jobs:
     - name: Run fsck with Valgrind
       run: |
         pushd tests
-        export FSCK1="valgrind --error-exitcode=1 ../fsck/fsck.exfat"
-        export FSCK2="valgrind --error-exitcode=1 ../fsck/fsck.exfat"
-        sudo -E ./test_fsck.sh
+        sudo \
+          FSCK1="valgrind --error-exitcode=1 ../fsck/fsck.exfat" \
+          FSCK2="valgrind --error-exitcode=1 ../fsck/fsck.exfat" \
+            ./test_fsck.sh
         popd
     - name: Run the rest with Valgrind
       shell: bash
@@ -157,16 +158,16 @@ jobs:
         popd
         rm -rf "$TMP_DIR"
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
         include:
-          - host: mips-linux-gnu
-            qemu: qemu-system-mips
-            gcc:  gcc-mips-linux-gnu
-            run:  qemu-mips
-            name: mips
+          - host: sparc64-linux-gnu
+            qemu: qemu-system-sparc
+            gcc:  gcc-sparc64-linux-gnu
+            run:  qemu-sparc64
+            name: sparc
           - host: x86_64-linux-gnu
             qemu: qemu-system-x86
             gcc:  gcc-x86-64-linux-gnu
@@ -185,15 +186,31 @@ jobs:
              cryptsetup parted dosfstools e2fsprogs btrfs-progs f2fs-tools ntfs-3g xfsprogs \
              ${{ matrix.gcc }} ${{ matrix.qemu }} \
              qemu-user qemu-utils
-        sudo apt-get install -y linux-modules-extra-$(uname -r)
         export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
         export PATH=/usr/local/lib:$PATH
+
+    - name: Retrieve util-linux tarball from cache
+      uses: actions/cache/restore@v6
+      id: restore-util-linux-tarball
+      with:
+        path: ${{ env.UTIL_LINUX_TARBALL }}
+        key: tarball-${{ env.UTIL_LINUX_TARBALL }}
+    - name: Download util-linux tarball
+      if: steps.restore-util-linux-tarball.outputs.cache-hit != 'true'
+      run: curl -L -o "$UTIL_LINUX_TARBALL" "$UTIL_LINUX_SRC"
+    - name: Save util-linux tarball from cache
+      uses: actions/cache/save@v6
+      if: steps.restore-util-linux-tarball.outputs.cache-hit != 'true'
+      with:
+        path: ${{ env.UTIL_LINUX_TARBALL }}
+        key: tarball-${{ env.UTIL_LINUX_TARBALL }}
+
     - name: Build libblkid
       shell: bash
       run: |
         set -e
-        curl "$UTIL_LINUX_SRC" | xzcat | tar xf -
-        pushd util-linux-*
+        tar xf "${{ env.UTIL_LINUX_TARBALL }}"
+        pushd util-linux-*/
 
         ./configure --host=${{ matrix.host }} --prefix=/usr/${{ matrix.host }}/local \
           --disable-shared --enable-static --disable-all-programs --enable-libblkid
@@ -220,7 +237,7 @@ jobs:
         BUILD_DIR="$(pwd)"
         "${CONFIG_SCRIPT}"
         make -j$((`nproc`+1))
-        sudo make install
+        sudo make check install
         popd
 
         rm -rf "$BUILD_DIR"
@@ -270,12 +287,8 @@ jobs:
     - name: run fsck repair testcases
       run: |
         pushd tests
-        export FSCK1="${{ matrix.run }} ../fsck/fsck.exfat"
-        export FSCK2="fsck.exfat"
-        sudo -E ./test_fsck.sh
-        export FSCK1="fsck.exfat"
-        export FSCK2="${{ matrix.run }} ../fsck/fsck.exfat"
-        sudo -E ./test_fsck.sh
+        sudo FSCK1="${{ matrix.run }} ../fsck/fsck.exfat" FSCK2="fsck.exfat" ./test_fsck.sh
+        sudo FSCK1="fsck.exfat" FSCK2="${{ matrix.run }} ../fsck/fsck.exfat" ./test_fsck.sh
         popd
     - name: dentry creation/deletion stress test
       shell: bash
@@ -432,7 +445,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [windows-2022, windows-latest]
-        name: [mips, i686, x86_64]
+        name: [sparc, i686, x86_64]
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/download-artifact@v8

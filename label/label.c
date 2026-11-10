@@ -18,9 +18,9 @@
 static void usage(void)
 {
 	fprintf(stderr, "Usage: exfatlabel\n");
-	fprintf(stderr, "\t-i | --volume-serial                  Switch to volume serial mode\n");
-	fprintf(stderr, "\t-V | --version                        Show version\n");
-	fprintf(stderr, "\t-h | --help                           Show help\n");
+	fprintf(stderr, "\t-i | --volume-serial  Switch to volume serial mode\n");
+	fprintf(stderr, "\t-V | --version        Show version\n");
+	fprintf(stderr, "\t-h | --help           Show help\n");
 
 	exit(EXIT_FAILURE);
 }

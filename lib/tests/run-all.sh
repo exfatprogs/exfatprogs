@@ -1,4 +1,7 @@
 #!/bin/sh
+# Note: this is only a convenience script for running test suites with Valgrind.
+# This is used in the CI pipelines(Github Actions). For normal cases, the tests
+# may be run with `make check` as well.
 
 main()
 {

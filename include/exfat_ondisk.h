@@ -38,8 +38,13 @@
 
 #define PBR_SIGNATURE		0xAA55
 
-#define VOL_CLEAN		0x0000
+/* Volume flags masks */
+
+#define VOL_ACTIVE_FAT		0x0001
 #define VOL_DIRTY		0x0002
+#define VOL_MEDIA_FAILURE	0x0004
+#define VOL_CLEAR_TO_ZERO	0x0008
+#define VOL_RESERVED		0xFFF0
 
 #define DENTRY_SIZE		32 /* directory entry size */
 #define DENTRY_SIZE_BITS	5
