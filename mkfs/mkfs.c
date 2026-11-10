@@ -36,13 +36,9 @@ static int fd_rnddev = -1;
 /* random serial generator based on current time */
 static unsigned int get_new_serial(void)
 {
-	struct timespec ts;
+	struct timespec ts = {};
 
-	if (clock_gettime(CLOCK_REALTIME, &ts)) {
-		/* set 0000-0000 on error */
-		ts.tv_sec = 0;
-		ts.tv_nsec = 0;
-	}
+	clock_gettime(CLOCK_REALTIME, &ts);
 
 	return (unsigned int)(ts.tv_nsec << 12 | ts.tv_sec);
 }
@@ -238,14 +234,14 @@ static int build_gpt(struct exfat_blk_dev *bd, const struct exfat_user_input *ui
 	}
 
 	/* fill in the data */
-
-	exfat_open_rnddev(); /* Some good entropy, please. */
-
 	/* The first GPT entry */
 
 	memcpy(&arr[0].partition_type_guid, EXFAT_GPT_PART_TYPE, 16);
 	memcpy(&serial, &arr[0].partition_type_guid, 2);
-	exfat_gen_guid(&arr[0].unique_partition_guid);
+	if (finfo.gpt.has_part_guid)
+		memcpy(&arr[0].unique_partition_guid, &finfo.gpt.part_guid, EXFAT_GUID_LEN);
+	else
+		exfat_gen_guid(&arr[0].unique_partition_guid);
 	arr[0].starting_lba = first_aligned;
 	arr[0].ending_lba = last_aligned;
 
@@ -276,7 +272,10 @@ static int build_gpt(struct exfat_blk_dev *bd, const struct exfat_user_input *ui
 	head_main->alternate_lba = bd->num_sectors - 1;
 	head_main->first_usable_lba = first_usable;
 	head_main->last_usable_lba = last_usable;
-	exfat_gen_guid(&head_main->disk_guid);
+	if (finfo.gpt.has_disk_guid)
+		memcpy(&head_main->disk_guid, &finfo.gpt.disk_guid, EXFAT_GUID_LEN);
+	else
+		exfat_gen_guid(&head_main->disk_guid);
 	head_main->partition_entry_lba = regions[EXFAT_GPT_DATA_REGION_M_ARR].ofs / sector;
 	head_main->num_partition_entries = EXFAT_GPT_ENTRY_CNT;
 	head_main->sizeof_partition_entry = EXFAT_GPT_ENTRY_SIZE;
@@ -851,6 +850,9 @@ static void usage(void)
 	fputs("Usage: mkfs.exfat\n"
 		"\t-L | --volume-label=label                 Set volume label\n"
 		"\t-U | --volume-guid=guid                   Set volume GUID\n"
+		"\t-i | --volume-serial=serial               Set volume serial\n"
+		"\t     --disk-guid=guid                     Set disk GUID (if GPT)\n"
+		"\t     --part-guid=guid                     Set partition GUID (if GPT)\n"
 		"\t-s | --sector-size=size[K]                Specify sector size\n"
 		"\t-c | --cluster-size=size[K|M]             Specify cluster size\n"
 		"\t-b | --boundary-align=size[K|M]           Specify boundary alignment\n"
@@ -876,11 +878,16 @@ enum longopt_num {
 	LON_PACK_BITMAP = CHAR_MAX + 1,
 	LON_UPCASE_FILE,
 	LON_BOOTCODE_MSG,
+	LON_DISK_GUID,
+	LON_PART_GUID,
 };
 
 static const struct option opts[] = {
 	{"volume-label",	required_argument,	NULL,	'L' },
 	{"volume-guid",		required_argument,	NULL,	'U' },
+	{"volume-serial",	required_argument,	NULL,	'i' },
+	{"disk-guid",		required_argument,	NULL,	LON_DISK_GUID },
+	{"part-guid",		required_argument,	NULL,	LON_PART_GUID },
 	{"sector-size",		required_argument,	NULL,	's' },
 	{"cluster-size",	required_argument,	NULL,	'c' },
 	{"boundary-align",	required_argument,	NULL,	'b' },
@@ -1131,7 +1138,6 @@ static int exfat_build_mkfs_info(struct exfat_blk_dev *bd, struct exfat_user_inp
 	finfo.root_start_clu = finfo.ut_start_clu + clu_len / ui->cluster_size;
 	finfo.root_byte_off = finfo.ut_byte_off + clu_len;
 	finfo.root_byte_len = sizeof(struct exfat_dentry) * 3;
-	finfo.volume_serial = get_new_serial();
 
 	return 0;
 }
@@ -1545,8 +1551,10 @@ int main(int argc, char *argv[])
 
 	setlocale(LC_ALL, "");
 
+	finfo.volume_serial = get_new_serial();
+
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:P:fFCKVqvh", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "n:L:U:s:c:b:P:fFCKVqvhi:", opts, NULL)) != EOF)
 		switch (c) {
 		/*
 		 * Make 'n' option fallthrough to 'L' option for for backward
@@ -1644,6 +1652,33 @@ int main(int argc, char *argv[])
 				ret = -EINVAL;
 				goto out;
 			}
+			break;
+		case 'i':
+		{
+			unsigned long n = 0;
+
+			if (exfat_parse_ulong(optarg, &n) || n > UINT_MAX) {
+				exfat_err("not a volume serial: %s\n", optarg);
+				ret = -EINVAL;
+				goto out;
+			}
+
+			finfo.volume_serial = (unsigned int)n;
+			break;
+		}
+		case LON_DISK_GUID:
+			if (exfat_parse_guid(finfo.gpt.disk_guid.b, optarg, "disk GUID")) {
+				ret = -EINVAL;
+				goto out;
+			}
+			finfo.gpt.has_disk_guid = true;
+			break;
+		case LON_PART_GUID:
+			if (exfat_parse_guid(finfo.gpt.part_guid.b, optarg, "partition GUID")) {
+				ret = -EINVAL;
+				goto out;
+			}
+			finfo.gpt.has_part_guid = true;
 			break;
 		case 'V':
 			version_only = true;
@@ -1919,6 +1954,8 @@ void exfat_gen_guid(void *out)
 	} __attribute__((__packed__)) rnd = { 0, };
 	struct timespec ts[2] = { 0, };
 	uint8_t zm[16] = { 0, };
+
+	exfat_open_rnddev();
 
 	/* static_assert(sizeof(rnd) == 16); */
 

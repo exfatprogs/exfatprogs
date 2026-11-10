@@ -22,8 +22,15 @@ mkfs.exfat \- create an exFAT filesystem
 .B \-U
 .I volume_guid
 ] [
+.B \-i
+.I volume_serial
+] [
 .B \-P
 .I type
+] [
+.B \-\-disk\-guid\fR=\fIguid\fR
+] [
+.B \-\-part\-guid\fR=\fIguid\fR
 ] [
 .B \-\-pack\-bitmap
 ] [
@@ -163,10 +170,27 @@ Specifies the volume label to be associated with the exFAT filesystem.
 .TP
 .BR \-U ", " \-\-volume\-guid =\fIguid\fR
 Specifies the volume GUID to be associated with the exFAT filesystem.
-It can be given in the standard, hypenized UUID format like
+It can be given in the standard, hyphenized UUID format like
 \fBaaaabbbb-cccc-dddd-eeee-ffff00001111\fR. Note: The volume GUID cannot be used
 to set the the 8-letter ID reported by \fIblkid\fR or used as
 the filesystem UUID in \fB/etc/fstab\fR.
+.TP
+.BR \-i ", " \-\-volume\-serial =\fIserial\fR
+Specifies the volume serial of the exFAT filesystem. The volume serial is an
+unsigned 32-bit integer. It can be represented either in hexadecimal or decimal
+format. In the former case, the number must be prefixed with "0x" (for example,
+0xdeedbeef). The default is a number which depends on the filesystem creation
+time.
+.TP
+.BR \-\-disk\-guid =\fIguid\fR
+Specifies the disk GUID to be associated with the GUID partition table(GPT).
+If GPT is not used for the new exFAT volume, the GUID is only validated but not
+used.
+.TP
+.BR \-\-part\-guid =\fIguid\fR
+Specifies the partition GUID to be associated with the GUID partition
+table(GPT). If GPT is not used for the new exFAT volume, the GUID is only
+validated but not used.
 .TP
 .B \-\-pack\-bitmap
 Attempts to relocate the exFAT allocation bitmap so that it ends at the
