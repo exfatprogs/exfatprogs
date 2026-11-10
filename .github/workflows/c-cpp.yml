@@ -284,6 +284,42 @@ jobs:
         rm -rf "$(realpath .)"
         popd
 
+# If run without -i, --disk-guid or --part-guid, mkfs.exfat must always create
+# randomly generated volume serial and GUIDs
+    - name: test mkfs RNG entropy
+      run: |
+        set -e
+
+        EXFAT_MKFS="$(realpath ./mkfs/mkfs.exfat)"
+
+        TMPDIR="$(mktemp -d)"
+        pushd "$TMPDIR"
+
+        rm -f a.img b.img
+        truncate -s 256M a.img
+        truncate -s 256M b.img
+        "$EXFAT_MKFS" -F -Pnone a.img
+        "$EXFAT_MKFS" -F -Pnone b.img
+        if diff a.img b.img
+        then
+          echo "mkfs.exfat generated the same volume serial !!!" >&2
+          exit 1
+        fi
+
+        rm -f a.img b.img
+        truncate -s 256M a.img
+        truncate -s 256M b.img
+        "$EXFAT_MKFS" -F -Pgpt -i 0x12345678 a.img
+        "$EXFAT_MKFS" -F -Pgpt -i 0x12345678 b.img
+        if diff a.img b.img
+        then
+          echo "mkfs.exfat generated the same GUIDs !!!" >&2
+          exit 1
+        fi
+
+        popd
+        rm -rf "$TMPDIR"
+
     - name: run fsck repair testcases
       run: |
         pushd tests
