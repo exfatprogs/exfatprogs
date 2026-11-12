@@ -56,7 +56,7 @@ static const uint32_t crc32table_le[256] = {
 };
 
 /* From Linux kernel lib/crc/crc32-main.c */
-static inline uint32_t crc32_le_base(uint32_t crc, const void *m, size_t len)
+uint32_t exfat_crc32_le_base(uint32_t crc, const void *m, size_t len)
 {
 	const uint8_t *p = m;
 
@@ -66,7 +66,7 @@ static inline uint32_t crc32_le_base(uint32_t crc, const void *m, size_t len)
 }
 
 /* From Linux kernel block/partitions/efi.c */
-uint32_t exfat_efi_crc32(const void *buf, size_t len)
+uint32_t exfat_calc_crc32(const void *buf, size_t len)
 {
-	return (crc32_le_base(~0L, buf, len) ^ ~0L);
+	return (exfat_crc32_le_base(~0L, buf, len) ^ ~0L);
 }

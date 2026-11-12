@@ -278,7 +278,7 @@ static int build_gpt(struct exfat_blk_dev *bd, const struct exfat_user_input *ui
 	head_main->num_partition_entries = EXFAT_GPT_ENTRY_CNT;
 	head_main->sizeof_partition_entry = EXFAT_GPT_ENTRY_SIZE;
 	head_main->partition_entry_array_crc32 = 0;
-	head_main->partition_entry_array_crc32 = exfat_efi_crc32(arr, EXFAT_GPT_ENTRY_ARR_SIZE);
+	head_main->partition_entry_array_crc32 = exfat_calc_crc32(arr, EXFAT_GPT_ENTRY_ARR_SIZE);
 	exfat_print_gpt_header(exfat_debug, "main", head_main);
 	exfat_debug("GPT header partition_entry_array_crc32: 0x%08"PRIx32"\n",
 			head_main->partition_entry_array_crc32);
@@ -299,9 +299,9 @@ static int build_gpt(struct exfat_blk_dev *bd, const struct exfat_user_input *ui
 	gpt_header_to_le(head_main);
 	gpt_header_to_le(head_backup);
 	head_main->header_crc32 = 0;
-	head_main->header_crc32 = exfat_efi_crc32(head_main, sizeof(*head_main));
+	head_main->header_crc32 = exfat_calc_crc32(head_main, sizeof(*head_main));
 	head_backup->header_crc32 = 0;
-	head_backup->header_crc32 = exfat_efi_crc32(head_backup, sizeof(*head_backup));
+	head_backup->header_crc32 = exfat_calc_crc32(head_backup, sizeof(*head_backup));
 	exfat_debug("GPT main   header header_crc32: 0x%08"PRIx32"\n", head_main->header_crc32);
 	exfat_debug("GPT backup header header_crc32: 0x%08"PRIx32"\n", head_backup->header_crc32);
 	head_main->header_crc32 = cpu_to_le32(head_main->header_crc32);
