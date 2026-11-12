@@ -4,7 +4,6 @@
  */
 #include "exfat_ondisk.h"
 #include "libexfat.h"
-#include "mkfs.h"
 
 static const uint32_t crc32table_le[256] = {
 	/*-

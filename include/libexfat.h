@@ -505,6 +505,9 @@ void exfat_put_mbr_partition(const struct exfat_blk_dev *bd, void *dst,
 		const uint8_t ptype, uint32_t chs_limit);
 void exfat_put_bootstrap_code(const char *user_msg, void *dst, unsigned int code_offset);
 
+/* crc.c */
+uint32_t exfat_efi_crc32(const void *buf, size_t len);
+
 /*
  * Misc
  */

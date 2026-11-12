@@ -140,9 +140,6 @@ bool exfat_write_mkfs_data_regions(struct exfat_blk_dev *bd,
 bool exfat_verify_mkfs_data_regions(struct exfat_blk_dev *bd,
 		const struct exfat_mkfs_data_region *r);
 
-/* crc.c */
-uint32_t exfat_efi_crc32(const void *buf, size_t len);
-
 bool exfat_open_rnddev(void);
 void exfat_close_rnddev(void);
 void exfat_gen_guid(void *out);
