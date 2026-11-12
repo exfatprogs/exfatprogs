@@ -34,7 +34,17 @@ struct exfat_fsck {
 	bool			dirty:1;
 	bool			dirty_fat:1;
 
-	char *name_hash_bitmap;
+	/*
+	 * btree of CRC32 of file names in the current subdirectory
+	 *
+	 * Unlike the traditional use, the key is the CRC32 value itself rather
+	 * than a pointer to a dynamically allocated memory. This is a hack that
+	 * depends on the fact that Linux(and most OSes) support starts from
+	 * 32-bit CPUs. In other words, void * type must be able to hold
+	 * uint32_t. This might not be always the case(eg. IBM S390), although
+	 * the hashing should work just fine with fewer bits.
+	 */
+	void *name_hash_tree;
 	struct progress_bar progress_bar;
 };
 

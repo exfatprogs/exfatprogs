@@ -657,6 +657,19 @@ uint16_t exfat_calc_name_hash(struct exfat *exfat,
 	return chksum;
 }
 
+uint32_t exfat_calc_name_hash_crc32(struct exfat *exfat, __le16 *name, int len)
+{
+	uint16_t ch;
+	uint32_t crc = ~0L;
+
+	while (len-- > 0) {
+		ch = exfat->upcase_table[le16_to_cpu(*name++)];
+		crc = exfat_crc32_le_base(crc, &ch, sizeof(ch));
+	}
+
+	return (crc ^ ~0L);
+}
+
 static void unix_time_to_exfat_time(time_t unix_time, __u8 *tz, __le16 *date,
 				    __le16 *time, __u8 *time_ms)
 {

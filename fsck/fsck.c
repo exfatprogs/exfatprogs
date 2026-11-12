@@ -4,6 +4,13 @@
  *   Copyright (C) 2020 Hyunchul Lee <hyc.lee@gmail.com>
  */
 
+/* Enable tdestroy() */
+#ifdef __linux__
+#define _GNU_SOURCE
+#else
+#define _BSD_SOURCE
+#endif
+
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -14,6 +21,7 @@
 #include <locale.h>
 #include <assert.h>
 #include <fcntl.h>
+#include <search.h>
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
@@ -711,12 +719,30 @@ static int handle_duplicated_filename(struct exfat_de_iter *iter,
 			ER_DE_DUPLICATED_NAME, "filename is duplicated");
 }
 
+/* Util functions for name_hash_tree */
+
+static void hash_tree_freef(void *ptr)
+{
+	/* Do nothing: no memory is dynamically allocated on our end */
+	(void)ptr;
+}
+
+static int hash_tree_compf(const void *a, const void *b)
+{
+	if ((uintptr_t)a == (uintptr_t)b)
+		return 0;
+	if ((uintptr_t)a < (uintptr_t)b)
+		return -1;
+	return 1;
+}
+
 static int check_name_dentry_set(struct exfat_de_iter *iter,
 				 struct exfat_inode *inode)
 {
 	struct exfat_dentry *stream_de;
 	size_t name_len;
 	__u16 hash;
+	uint32_t hash_crc32;
 	int ret = 0;
 
 	exfat_de_iter_get(iter, 1, &stream_de);
@@ -746,6 +772,7 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 	}
 
 	hash = exfat_calc_name_hash(iter->exfat, inode->name, (int)name_len);
+	hash_crc32 = exfat_calc_name_hash_crc32(iter->exfat, inode->name, (int)name_len);
 	if (cpu_to_le16(hash) != stream_de->stream_name_hash) {
 		if (repair_file_ask(iter, NULL, ER_DE_NAME_HASH,
 				    "the name hash of a file is wrong")) {
@@ -757,10 +784,18 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 		}
 	}
 
-	if (BITMAP_GET(iter->name_hash_bitmap, hash)) {
+	if (tfind((void *)(uintptr_t)hash_crc32, iter->name_hash_tree, hash_tree_compf))
 		ret = handle_duplicated_filename(iter, inode);
-	} else
-		BITMAP_SET(iter->name_hash_bitmap, hash);
+	else {
+		void *inserted = tsearch((void *)(uintptr_t)hash_crc32,
+					 iter->name_hash_tree, hash_tree_compf);
+
+		if (inserted == NULL) {
+			exfat_err("failed to allocate memory\n");
+			/* Returning -ENOMEM here results in incorrect behaviour :( */
+			exit(FSCK_EXIT_OPERATION_ERROR);
+		}
+	}
 
 	return ret;
 }
@@ -1471,9 +1506,11 @@ static int read_children(struct exfat_fsck *fsck, struct exfat_inode *dir)
 	else if (ret)
 		return ret;
 
-	de_iter->name_hash_bitmap = fsck->name_hash_bitmap;
-	memset(fsck->name_hash_bitmap, 0,
-			EXFAT_BITMAP_SIZE(EXFAT_MAX_HASH_COUNT));
+	if (fsck->name_hash_tree != NULL) {
+		tdestroy(fsck->name_hash_tree, hash_tree_freef);
+		fsck->name_hash_tree = NULL;
+	}
+	de_iter->name_hash_tree = &fsck->name_hash_tree;
 
 	while (1) {
 		ret = exfat_de_iter_get(de_iter, 0, &dentry);
@@ -1612,12 +1649,6 @@ static int exfat_filesystem_check(struct exfat_fsck *fsck)
 		return -ENOENT;
 	}
 
-	fsck->name_hash_bitmap = malloc(EXFAT_BITMAP_SIZE(EXFAT_MAX_HASH_COUNT));
-	if (!fsck->name_hash_bitmap) {
-		exfat_err("failed to allocate name hash bitmap\n");
-		return -ENOMEM;
-	}
-
 	list_add(&exfat->root->list, &exfat->dir_list);
 
 	while (!list_empty(&exfat->dir_list)) {
@@ -1646,7 +1677,11 @@ static int exfat_filesystem_check(struct exfat_fsck *fsck)
 	}
 out:
 	exfat_free_dir_list(exfat);
-	free(fsck->name_hash_bitmap);
+	if (fsck->name_hash_tree != NULL) {
+		tdestroy(fsck->name_hash_tree, hash_tree_freef);
+		fsck->name_hash_tree = NULL;
+	}
+
 	return ret;
 }
 
