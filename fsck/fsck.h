@@ -35,6 +35,13 @@ struct exfat_fsck {
 	bool			dirty_fat:1;
 
 	char *name_hash_bitmap;
+	/* strong hash set for the duplicated name check, see fsck.c */
+	struct exfat_name_set {
+		uint64_t	*slots;
+		unsigned int	nr_slots;
+		unsigned int	nr_used;
+		bool		overflowed;
+	} name_set;
 	struct progress_bar progress_bar;
 };
 

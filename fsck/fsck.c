@@ -690,6 +690,144 @@ static int check_inode(struct exfat_de_iter *iter, struct exfat_inode *node)
 	return valid ? ret : -EINVAL;
 }
 
+/*
+ * Strong hash set of the file names in one directory, used to avoid
+ * rescanning the directory on every exFAT NameHash collision.
+ *
+ * exFAT NameHash is only 16 bits wide. The bitmap check treats a repeated
+ * hash as a possible duplicated name and calls handle_duplicated_filename(),
+ * which walks the parent directory from the beginning. When a directory
+ * contains many files, the hash collides often and most entries hit the
+ * bitmap, so the check becomes O(N^2) in the number of entries.
+ *
+ * The set stores a 64-bit hash of the whole name. Names that compare equal
+ * in handle_duplicated_filename() have the same strong hash and still go
+ * through the confirmation. Entries that only collide on the 16-bit NameHash
+ * no longer cause a rescan.
+ *
+ * The set uses open addressing and grows with the number of entries in the
+ * directory; its memory is reused across directories. The bitmap is always
+ * maintained, so when the set reaches NAME_SET_MAX_SLOTS or cannot allocate
+ * memory it is marked overflowed and the check falls back to the bitmap.
+ * Duplicated names across the overflow point are still detected this way.
+ */
+#define NAME_SET_INIT_SLOTS	1024U
+#define NAME_SET_MAX_SLOTS	(1U << 21)	/* 2M slots, 16MB at most */
+
+/*
+ * FNV-1a 64-bit over the on-disk UTF-16 name bytes. The name comparison in
+ * handle_duplicated_filename() is byte-exact, so the bytes must not be
+ * upcased here.
+ */
+static uint64_t name_strong_hash(const __le16 *name, size_t name_len)
+{
+	const unsigned char *p = (const unsigned char *)name;
+	size_t nr_bytes = name_len * sizeof(*name);
+	uint64_t h = 0xcbf29ce484222325ULL;
+	size_t i;
+
+	for (i = 0; i < nr_bytes; i++) {
+		h ^= p[i];
+		h *= 0x100000001b3ULL;
+	}
+	/* zero marks an empty slot */
+	return h ? h : 1;
+}
+
+static void name_set_reset(struct exfat_name_set *set)
+{
+	if (!set)
+		return;
+	if (set->slots)
+		memset(set->slots, 0, set->nr_slots * sizeof(*set->slots));
+	set->nr_used = 0;
+	set->overflowed = false;
+}
+
+static bool name_set_rehash(struct exfat_name_set *set, unsigned int new_slots)
+{
+	uint64_t *old_slots = set->slots;
+	unsigned int old_nr = set->nr_slots;
+	uint64_t *slots;
+	unsigned int i;
+
+	slots = calloc(new_slots, sizeof(*slots));
+	if (!slots)
+		return false;
+
+	set->slots = slots;
+	set->nr_slots = new_slots;
+	for (i = 0; i < old_nr; i++) {
+		uint64_t h = old_slots[i];
+		unsigned int idx;
+
+		if (!h)
+			continue;
+		idx = (unsigned int)(h & (new_slots - 1));
+		while (slots[idx])
+			idx = (idx + 1) & (new_slots - 1);
+		slots[idx] = h;
+	}
+	free(old_slots);
+	return true;
+}
+
+/*
+ * Return 1 if the strong hash was already present (possible duplicated
+ * name, the caller has to confirm it), 0 if it was inserted, and -1 if the
+ * set is unusable (out of memory or overflowed), in which case the caller
+ * has to fall back to the bitmap check.
+ */
+static int name_set_insert(struct exfat_name_set *set,
+			   const __le16 *name, size_t name_len)
+{
+	uint64_t h;
+	unsigned int idx;
+
+	if (!set || set->overflowed)
+		return -1;
+
+	if (!set->slots) {
+		set->slots = calloc(NAME_SET_INIT_SLOTS, sizeof(*set->slots));
+		if (!set->slots) {
+			set->overflowed = true;
+			return -1;
+		}
+		set->nr_slots = NAME_SET_INIT_SLOTS;
+		set->nr_used = 0;
+	}
+
+	/* keep the load factor at or below 1/2 to bound the probe length */
+	if (set->nr_used * 2 >= set->nr_slots) {
+		if (set->nr_slots >= NAME_SET_MAX_SLOTS ||
+		    !name_set_rehash(set, set->nr_slots * 2)) {
+			set->overflowed = true;
+			return -1;
+		}
+	}
+
+	h = name_strong_hash(name, name_len);
+	idx = (unsigned int)(h & (set->nr_slots - 1));
+	while (set->slots[idx]) {
+		if (set->slots[idx] == h)
+			return 1;
+		idx = (idx + 1) & (set->nr_slots - 1);
+	}
+	set->slots[idx] = h;
+	set->nr_used++;
+	return 0;
+}
+
+static void name_set_free(struct exfat_name_set *set)
+{
+	if (!set)
+		return;
+	free(set->slots);
+	set->slots = NULL;
+	set->nr_slots = 0;
+	set->nr_used = 0;
+}
+
 static int handle_duplicated_filename(struct exfat_de_iter *iter,
 		struct exfat_inode *inode)
 {
@@ -718,6 +856,7 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 	size_t name_len;
 	__u16 hash;
 	int ret = 0;
+	int set_ret;
 
 	exfat_de_iter_get(iter, 1, &stream_de);
 
@@ -757,8 +896,19 @@ static int check_name_dentry_set(struct exfat_de_iter *iter,
 		}
 	}
 
+	/*
+	 * Keep the bitmap up to date. When the set overflows, duplicated
+	 * names across the overflow point are still found through it.
+	 */
+	set_ret = name_set_insert(iter->name_set, inode->name, name_len);
 	if (BITMAP_GET(iter->name_hash_bitmap, hash)) {
-		ret = handle_duplicated_filename(iter, inode);
+		/*
+		 * A set_ret of 0 means the strong hash is new, so the name
+		 * cannot be duplicated. Only an unusable set (-1) needs the
+		 * original rescan.
+		 */
+		if (set_ret != 0)
+			ret = handle_duplicated_filename(iter, inode);
 	} else
 		BITMAP_SET(iter->name_hash_bitmap, hash);
 
@@ -1474,6 +1624,9 @@ static int read_children(struct exfat_fsck *fsck, struct exfat_inode *dir)
 	de_iter->name_hash_bitmap = fsck->name_hash_bitmap;
 	memset(fsck->name_hash_bitmap, 0,
 			EXFAT_BITMAP_SIZE(EXFAT_MAX_HASH_COUNT));
+	/* the set is reset per directory, but its slots are reused */
+	de_iter->name_set = &fsck->name_set;
+	name_set_reset(&fsck->name_set);
 
 	while (1) {
 		ret = exfat_de_iter_get(de_iter, 0, &dentry);
@@ -1647,6 +1800,7 @@ static int exfat_filesystem_check(struct exfat_fsck *fsck)
 out:
 	exfat_free_dir_list(exfat);
 	free(fsck->name_hash_bitmap);
+	name_set_free(&fsck->name_set);
 	return ret;
 }
 
