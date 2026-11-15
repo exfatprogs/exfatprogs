@@ -1002,7 +1002,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	show_version();
+	show_version(stdout);
 	if (only_show_version)
 		return ret;
 

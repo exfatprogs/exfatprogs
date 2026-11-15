@@ -6,6 +6,7 @@
 #ifndef _LIBEXFAT_H
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <wchar.h>
 #include <limits.h>
@@ -230,7 +231,7 @@ int exfat_bitmap_find_one(struct exfat *exfat, unsigned char *bmap,
 unsigned int exfat_count_used_clusters(const void *bitmap, const size_t size,
 		const unsigned int total_clus);
 
-void show_version(void);
+void show_version(FILE *stream);
 
 static inline bool exfat_bad_char(unsigned short w)
 {

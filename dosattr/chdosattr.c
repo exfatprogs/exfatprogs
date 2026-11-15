@@ -265,7 +265,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (ui.f.version_only)
-		show_version();
+		show_version(stdout);
 	if (ui.f.help)
 		usage();
 	if (ui.f.help || ui.f.version_only)

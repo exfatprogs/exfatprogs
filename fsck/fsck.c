@@ -2142,11 +2142,11 @@ int main(int argc, char * const argv[])
 	}
 
 	if (version_only) {
-		show_version();
+		show_version(stdout);
 		exit(FSCK_EXIT_SYNTAX_ERROR);
 	}
 	if (!(ui.options & FSCK_OPTS_REPAIR_AUTO))
-		show_version();
+		show_version(stdout);
 
 	if (optind != argc - 1 ||
 	    (ui.options & FSCK_OPTS_REPAIR_ASK && ui.options & FSCK_OPTS_PROGRESS_BAR))
