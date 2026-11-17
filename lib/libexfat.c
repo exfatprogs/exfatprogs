@@ -1137,6 +1137,14 @@ ssize_t exfat_utf16_dec(const __u16 *in_str, size_t in_len,
 	return out_len-1;
 }
 
+/* 512 B..4 KiB sectors, clusters up to 32 MiB: bounds both shift counts. */
+static bool valid_boot_size_bits(unsigned char sect_size_bits,
+		unsigned char sect_per_clus_bits)
+{
+	return sect_size_bits >= 9 && sect_size_bits <= 12 &&
+		sect_per_clus_bits <= 25 - sect_size_bits;
+}
+
 off_t exfat_get_root_entry_offset(struct exfat_blk_dev *bd)
 {
 	struct pbr *bs;
@@ -1159,6 +1167,14 @@ off_t exfat_get_root_entry_offset(struct exfat_blk_dev *bd)
 
 	if (memcmp(bs->bpb.oem_name, "EXFAT   ", 8) != 0) {
 		exfat_err("Bad fs_name in boot sector, which does not describe a valid exfat filesystem\n");
+		free(bs);
+		return -1;
+	}
+
+	if (!valid_boot_size_bits(bs->bsx.sect_size_bits,
+				  bs->bsx.sect_per_clus_bits)) {
+		exfat_err("bogus sector or cluster size bits: %u, %u\n",
+			  bs->bsx.sect_size_bits, bs->bsx.sect_per_clus_bits);
 		free(bs);
 		return -1;
 	}
@@ -1820,6 +1836,14 @@ int exfat_set_volume_serial(struct exfat_blk_dev *bd,
 		goto free_ppbr;
 	}
 
+	if (!valid_boot_size_bits(ppbr->bsx.sect_size_bits,
+				  ppbr->bsx.sect_per_clus_bits)) {
+		exfat_err("bogus sector or cluster size bits: %u, %u\n",
+			  ppbr->bsx.sect_size_bits, ppbr->bsx.sect_per_clus_bits);
+		ret = -1;
+		goto free_ppbr;
+	}
+
 	bd->sector_size = 1 << ppbr->bsx.sect_size_bits;
 	ppbr->bsx.vol_serial = cpu_to_le32(ui->volume_serial);
 
@@ -2032,6 +2056,13 @@ int read_boot_sect(struct exfat_blk_dev *bdev, struct pbr **bs)
 	if (le32_to_cpu(pbr->bsx.clu_count) > EXFAT_MAX_NUM_CLUSTER) {
 		exfat_err("too large cluster count: %u, max allowed: %u\n",
 			  le32_to_cpu(pbr->bsx.clu_count), EXFAT_MAX_NUM_CLUSTER);
+		goto err;
+	}
+
+	if (!valid_boot_size_bits(pbr->bsx.sect_size_bits,
+				  pbr->bsx.sect_per_clus_bits)) {
+		exfat_err("bogus sector or cluster size bits: %u, %u\n",
+			  pbr->bsx.sect_size_bits, pbr->bsx.sect_per_clus_bits);
 		goto err;
 	}
 
