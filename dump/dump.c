@@ -785,23 +785,181 @@ free_inode:
 }
 
 /*
+ * A directory that has been found but not scanned yet.
+ *
+ * The path of the directory is not kept: it is rebuilt from the name of the
+ * directory and of its parents when it is scanned, so only the small names
+ * have to be kept in memory instead of one full path per pending directory.
+ *
+ * A node is released once the queue and all the directories queued from it
+ * have released their reference.
+ */
+struct scan_dir {
+	struct exfat_inode *inode;
+	struct scan_dir *parent;
+	unsigned int refs;
+	struct scan_dir *next;
+};
+
+struct scan_dir_queue {
+	struct scan_dir *head;
+	struct scan_dir *tail;
+};
+
+static struct scan_dir *exfat_new_scan_dir(struct exfat_inode *inode,
+		struct scan_dir *parent)
+{
+	struct scan_dir *scan_dir = malloc(sizeof(*scan_dir));
+
+	if (!scan_dir)
+		return NULL;
+
+	scan_dir->inode = inode;
+	scan_dir->parent = parent;
+	scan_dir->refs = 1;
+	scan_dir->next = NULL;
+
+	if (parent)
+		parent->refs++;
+
+	return scan_dir;
+}
+
+static void exfat_free_scan_dir(struct scan_dir *scan_dir)
+{
+	struct scan_dir *parent;
+
+	while (scan_dir) {
+		if (--scan_dir->refs)
+			break;
+
+		parent = scan_dir->parent;
+		exfat_free_inode(scan_dir->inode);
+		free(scan_dir);
+		scan_dir = parent;
+	}
+}
+
+static void exfat_queue_scan_dir(struct scan_dir_queue *queue,
+		struct scan_dir *scan_dir)
+{
+	if (queue->tail)
+		queue->tail->next = scan_dir;
+	else
+		queue->head = scan_dir;
+	queue->tail = scan_dir;
+}
+
+static void exfat_free_scan_dirs(struct scan_dir_queue *queue)
+{
+	while (queue->head) {
+		struct scan_dir *scan_dir = queue->head;
+
+		queue->head = scan_dir->next;
+		exfat_free_scan_dir(scan_dir);
+	}
+	queue->tail = NULL;
+}
+
+/*
+ * Check whether a directory entry points back to a directory that is already
+ * being walked.  Such a loop would otherwise be followed until memory runs out.
+ */
+static bool exfat_scan_dir_seen(struct exfat_inode *dir,
+		struct scan_dir *dir_node, uint32_t first_clus)
+{
+	if (dir->first_clus == first_clus)
+		return true;
+
+	for (; dir_node; dir_node = dir_node->parent) {
+		if (dir_node->inode->first_clus == first_clus)
+			return true;
+	}
+
+	return false;
+}
+
+/*
+ * Build the path of a queued directory from the root prefix and the names of
+ * its parents.  The returned string has to be freed by the caller.
+ */
+static char *exfat_scan_dir_path(const char *root, struct scan_dir *scan_dir)
+{
+	struct scan_dir *dir;
+	const struct scan_dir **dirs;
+	size_t depth = 0, i, size, len;
+	ssize_t name_len;
+	char *path, *new_path;
+
+	for (dir = scan_dir; dir; dir = dir->parent)
+		depth++;
+
+	dirs = malloc(depth * sizeof(*dirs));
+	if (!dirs)
+		return NULL;
+
+	i = depth;
+	for (dir = scan_dir; dir; dir = dir->parent)
+		dirs[--i] = dir;
+
+	size = strlen(root) + 1;
+	path = malloc(size);
+	if (!path) {
+		free(dirs);
+		return NULL;
+	}
+	memcpy(path, root, size);
+	len = size - 1;
+
+	for (i = 0; i < depth; i++) {
+		size = len + 1 + NAME_BUFFER_SIZE * 4 + 1;
+		new_path = realloc(path, size);
+		if (!new_path) {
+			free(path);
+			free(dirs);
+			return NULL;
+		}
+		path = new_path;
+
+		path[len++] = '/';
+		name_len = exfat_utf16_dec(dirs[i]->inode->name, NAME_BUFFER_SIZE,
+				path + len, size - len);
+		if (name_len < 0)
+			name_len = snprintf(path + len, size - len, "<invalid>");
+		else
+			name_len = strlen(path + len);
+		len += name_len;
+	}
+
+	free(dirs);
+
+	return path;
+}
+
+/*
  * Scan and print the directory sets in a directory
  *
  * Input:
  *   dir: the inode of the directory.
  *   path: the path of the directory.
- *   flags: If DUMP_SCAN_DIR_RECURSIVE is set, scan and print directory entry
- *         sets recursively.
+ *   dir_node: the queued node of the directory, NULL for the start directory.
+ *   flags: If DUMP_SCAN_DIR_RECURSIVE is set, queue the sub-directories of
+ *         the directory for scanning.
+ *   queue: the directories that still have to be scanned.
  */
 static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
-		const char *path, uint32_t flags)
+		const char *path, struct scan_dir *dir_node, uint32_t flags,
+		struct scan_dir_queue *queue)
 {
-	int ret, dentry_count, len;
+	int ret, dentry_count;
+	size_t len, path_size;
+	bool queued;
 	struct buffer_desc *scan_bdesc;
 	struct exfat_de_iter de_iter;
 	struct exfat_dentry *dentry;
 	struct exfat_inode *inode;
-	char new_path[PATH_MAX];
+	struct scan_dir *scan_dir;
+	char *new_path;
 
 	scan_bdesc = exfat_alloc_buffer(exfat);
 	if (!scan_bdesc)
@@ -833,29 +991,51 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 
 			exfat_info("-----------------------------------------------------\n");
 
-			len = snprintf(new_path, sizeof(new_path), "%s/", path);
-			if (dir->first_clus == exfat->root->first_clus)
-				len = 1;
+			path_size = strlen(path) + 2 + NAME_BUFFER_SIZE * 4;
+			new_path = malloc(path_size);
+			if (!new_path) {
+				exfat_free_inode(inode);
+				ret = -ENOMEM;
+				goto free_buffer;
+			}
+
+			len = strlen(path);
+			memcpy(new_path, path, len);
+			if (len == 0 || new_path[len - 1] != '/')
+				new_path[len++] = '/';
 
 			ret = exfat_utf16_dec(inode->name, NAME_BUFFER_SIZE,
-					new_path + len, sizeof(new_path) - len);
+					new_path + len, path_size - len);
 			if (ret < 0)
-				snprintf(new_path + len, sizeof(new_path) - len,
+				snprintf(new_path + len, path_size - len,
 						"<invalid>");
 
 			exfat_info("Path: %s\n", new_path);
 			exfat_show_dentry_set(exfat, inode, dir->is_contiguous, flags);
+			queued = false;
 			if ((inode->attr & ATTR_SUBDIR) &&
 			    (flags & DUMP_SCAN_DIR_RECURSIVE)) {
-				ret = exfat_scan_dentry_set(exfat, inode,
-						new_path, flags);
-				if (ret) {
-					exfat_free_inode(inode);
-					goto free_buffer;
+				if (exfat_scan_dir_seen(dir, dir_node,
+						inode->first_clus)) {
+					exfat_info("Skipping already visited directory: %s\n",
+							new_path);
+				} else {
+					scan_dir = exfat_new_scan_dir(inode,
+							dir_node);
+					if (!scan_dir) {
+						exfat_free_inode(inode);
+						free(new_path);
+						ret = -ENOMEM;
+						goto free_buffer;
+					}
+					exfat_queue_scan_dir(queue, scan_dir);
+					queued = true;
 				}
 			}
 			dentry_count = inode->dentry_count;
-			exfat_free_inode(inode);
+			if (!queued)
+				exfat_free_inode(inode);
+			free(new_path);
 		} else if (dentry->type & EXFAT_INVAL) {
 			exfat_info("-----------------------------------------------------\n");
 			exfat_info("Directory: %s\n", path);
@@ -870,6 +1050,66 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 
 free_buffer:
 	exfat_free_buffer(exfat, scan_bdesc);
+
+	return ret;
+}
+
+/*
+ * Scan and print the directory sets of a directory and, if requested, of all
+ * the directories below it.
+ */
+static int exfat_scan_dentry_tree(struct exfat *exfat, struct exfat_inode *dir,
+		const char *path, uint32_t flags)
+{
+	struct scan_dir_queue queue = { NULL, NULL };
+	struct scan_dir *scan_dir;
+	size_t root_len;
+	const char *start_path;
+	char *root, *dir_path;
+	int ret;
+
+	/*
+	 * Build the queue paths from the file system root so that they do not
+	 * depend on how the start directory was named on the command line.
+	 */
+	root_len = strlen(path);
+	if (dir->first_clus == exfat->root->first_clus) {
+		root_len = 0;
+	} else {
+		while (root_len > 0 && path[root_len - 1] == '/')
+			root_len--;
+	}
+
+	root = malloc(root_len + 1);
+	if (!root)
+		return -ENOMEM;
+
+	memcpy(root, path, root_len);
+	root[root_len] = '\0';
+	start_path = root[0] ? root : "/";
+
+	ret = exfat_scan_dentry_set(exfat, dir, start_path, NULL, flags, &queue);
+	while (ret == 0 && queue.head) {
+		scan_dir = queue.head;
+		queue.head = scan_dir->next;
+		if (!queue.head)
+			queue.tail = NULL;
+
+		dir_path = exfat_scan_dir_path(root, scan_dir);
+		if (!dir_path) {
+			exfat_free_scan_dir(scan_dir);
+			ret = -ENOMEM;
+			break;
+		}
+
+		ret = exfat_scan_dentry_set(exfat, scan_dir->inode,
+				dir_path, scan_dir, flags, &queue);
+
+		free(dir_path);
+		exfat_free_scan_dir(scan_dir);
+	}
+	exfat_free_scan_dirs(&queue);
+	free(root);
 
 	return ret;
 }
@@ -892,7 +1132,7 @@ static int exfat_show_dentry_set_by_path(struct exfat *exfat, const char *path,
 			goto out;
 		}
 
-		ret = exfat_scan_dentry_set(exfat, inode, path, flags);
+		ret = exfat_scan_dentry_tree(exfat, inode, path, flags);
 		goto out;
 	}
 
