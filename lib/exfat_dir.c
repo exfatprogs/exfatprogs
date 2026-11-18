@@ -186,7 +186,10 @@ static ssize_t read_block(struct exfat_de_iter *iter, unsigned int block)
 		return -EIO;
 
 	if (block > 0) {
-		if (block > iter->parent->size / iter->read_size)
+		/* also cap by volume size: a cyclic FAT chain would loop here */
+		if (block > iter->parent->size / iter->read_size ||
+		    block > (uint64_t)exfat->clus_count * exfat->clus_size /
+				iter->read_size)
 			return EOF;
 
 		prev_desc = exfat_de_iter_get_buffer(iter, block - 1);
