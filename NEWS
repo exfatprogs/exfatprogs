@@ -1,3 +1,24 @@
+exfatprogs 1.4.5 - released 2026-11-18
+======================================
+
+NEW FEATURES :
+ * mkfs.exfat: add options to set the volume serial, disk GUID,
+   and partition GUID for deterministic filesystem images.
+
+CHANGES :
+ * fsck.exfat: increase duplicate filename detection speed for
+   directories with many files.
+
+BUG FIXES :
+ * fsck.exfat: distinguish filenames by their full name length to
+   avoid false duplicate-file repairs.
+ * mkfs.exfat: set the protective MBR disk signature to zero as
+   required for GPT.
+ * exfatprogs: restore version output to stdout for command-line
+   compatibility.
+ * exfatprogs: reject invalid boot-sector sector and cluster size
+   bits before shifting.
+
 exfatprogs 1.4.4 - released 2026-11-10
 ======================================
 
