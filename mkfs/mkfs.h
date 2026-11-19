@@ -32,6 +32,10 @@ struct exfat_mkfs_data_region {
 	void *data;
 };
 
+struct exfat_guid {
+	uint8_t b[16];
+};
+
 struct exfat_mkfs_info {
 	struct {
 		struct {
@@ -62,16 +66,18 @@ struct exfat_mkfs_info {
 	unsigned int volume_serial;
 
 	struct {
+		struct exfat_guid disk_guid;
+		struct exfat_guid part_guid;
+
 		void *mbr;
 		struct exfat_gpt_header *head_main;
 		struct exfat_gpt_header *head_backup;
 		struct exfat_gpt_entry *arr;
 		struct exfat_mkfs_data_region regions[EXFAT_GPT_DATA_REGION_CNT];
-	} gpt;
-};
 
-struct exfat_guid {
-	uint8_t b[16];
+		bool has_disk_guid:1;
+		bool has_part_guid:1;
+	} gpt;
 };
 
 struct exfat_gpt_header {
@@ -133,9 +139,6 @@ bool exfat_write_mkfs_data_regions(struct exfat_blk_dev *bd,
 		const struct exfat_mkfs_data_region *r);
 bool exfat_verify_mkfs_data_regions(struct exfat_blk_dev *bd,
 		const struct exfat_mkfs_data_region *r);
-
-/* crc.c */
-uint32_t exfat_efi_crc32(const void *buf, size_t len);
 
 bool exfat_open_rnddev(void);
 void exfat_close_rnddev(void);

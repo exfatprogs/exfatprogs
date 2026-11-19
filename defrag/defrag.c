@@ -193,7 +193,7 @@ static int add_virtual_node(struct cluster_info_set *set, uint32_t data)
 		new_size = (offset + index + VIRT_SPACE_ALIGN) * sizeof(uint32_t);
 		new_next_clus = realloc(set->next_clus, new_size);
 		if (new_next_clus == NULL) {
-			exfat_err("memory run out in %s", __func__);
+			exfat_err("memory run out in %s\n", __func__);
 			return -ENOMEM;
 		}
 		set->next_clus = new_next_clus;
@@ -1002,7 +1002,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	show_version();
+	show_version(stdout);
 	if (only_show_version)
 		return ret;
 

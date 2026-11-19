@@ -3,4 +3,4 @@ mkfs_exfat_LDADD = $(top_builddir)/lib/libexfat.a $(BLKID_LIBS)
 
 sbin_PROGRAMS = mkfs.exfat
 
-mkfs_exfat_SOURCES = mkfs.c upcase.c mkfs.h crc.c
+mkfs_exfat_SOURCES = mkfs.c upcase.c mkfs.h

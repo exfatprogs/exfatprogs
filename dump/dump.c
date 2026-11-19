@@ -958,7 +958,7 @@ int main(int argc, char *argv[])
 			usage();
 	}
 
-	show_version();
+	show_version(stdout);
 	if (version_only)
 		exit(EXIT_FAILURE);
 

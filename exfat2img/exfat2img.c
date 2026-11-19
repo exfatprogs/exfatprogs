@@ -893,7 +893,7 @@ int main(int argc, char * const argv[])
 			out_path = optarg;
 			break;
 		case 'V':
-			show_version();
+			show_version(stdout);
 			return 0;
 		case 'h':
 			/* Fall through */
@@ -903,7 +903,7 @@ int main(int argc, char * const argv[])
 		}
 	}
 
-	show_version();
+	show_version(stderr);
 	if (!(optind == argc - 1 && out_path) &&
 	    !(optind == argc - 2 && !out_path))
 		usage(argv[0]);

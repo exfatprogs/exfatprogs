@@ -537,6 +537,14 @@ static int filter_lookup_file(struct exfat_de_iter *de_iter,
 	name = (__le16 *)param;
 	name_len = (int)exfat_utf16_len(name, PATH_MAX);
 
+	/*
+	 * The name comparison below doesn't reach the terminating NUL when
+	 * name_len is a multiple of ENTRY_NAME_MAX, so a name would match any
+	 * longer name it is a prefix of. Check the length first.
+	 */
+	if (stream_de->stream_name_len != name_len)
+		return 1;
+
 	if (file_de->dentry.file.num_ext <
 		1 + (name_len + ENTRY_NAME_MAX - 1) / ENTRY_NAME_MAX)
 		return 1;
@@ -647,6 +655,19 @@ uint16_t exfat_calc_name_hash(struct exfat *exfat,
 		chksum += ch >> 8;
 	}
 	return chksum;
+}
+
+uint32_t exfat_calc_name_hash_crc32(struct exfat *exfat, __le16 *name, int len)
+{
+	uint16_t ch;
+	uint32_t crc = ~0L;
+
+	while (len-- > 0) {
+		ch = exfat->upcase_table[le16_to_cpu(*name++)];
+		crc = exfat_crc32_le_base(crc, &ch, sizeof(ch));
+	}
+
+	return (crc ^ ~0L);
 }
 
 static void unix_time_to_exfat_time(time_t unix_time, __u8 *tz, __le16 *date,

@@ -6,6 +6,7 @@
 #ifndef _LIBEXFAT_H
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <wchar.h>
 #include <limits.h>
@@ -230,7 +231,7 @@ int exfat_bitmap_find_one(struct exfat *exfat, unsigned char *bmap,
 unsigned int exfat_count_used_clusters(const void *bitmap, const size_t size,
 		const unsigned int total_clus);
 
-void show_version(void);
+void show_version(FILE *stream);
 
 static inline bool exfat_bad_char(unsigned short w)
 {
@@ -386,6 +387,8 @@ DECLARE_PARSE_NUM(long, exfat_parse_long);
 DECLARE_PARSE_NUM(long long, exfat_parse_longlong);
 #undef DECLARE_PARSE_NUM
 
+int exfat_parse_guid(__u8 *guid, const char *input, const char *type);
+
 /*
  * Parse a software version string
  *
@@ -502,6 +505,10 @@ void exfat_put_mbr_partition(const struct exfat_blk_dev *bd, void *dst,
 		uint32_t serial, uint32_t offset_sector, const bool active,
 		const uint8_t ptype, uint32_t chs_limit);
 void exfat_put_bootstrap_code(const char *user_msg, void *dst, unsigned int code_offset);
+
+/* crc.c */
+uint32_t exfat_crc32_le_base(uint32_t crc, const void *m, size_t len);
+uint32_t exfat_calc_crc32(const void *buf, size_t len);
 
 /*
  * Misc
