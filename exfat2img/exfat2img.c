@@ -54,6 +54,7 @@ struct exfat2img {
 	void			*dump_cluster;
 	struct buffer_desc	*scan_bdesc;
 	struct exfat_de_iter	de_iter;
+	unsigned char		*dir_bitmap;	/* clusters of scanned directories */
 };
 
 struct exfat_stat {
@@ -107,6 +108,8 @@ static void free_exfat2img(struct exfat2img *ei)
 		exfat_free_exfat(ei->exfat);
 	if (ei->dump_cluster)
 		free(ei->dump_cluster);
+	if (ei->dir_bitmap)
+		free(ei->dir_bitmap);
 	if (ei->opened_fd >= 0) {
 		close(ei->opened_fd);
 		ei->opened_fd = -1;
@@ -130,6 +133,12 @@ static int create_exfat2img(struct exfat2img *ei, const char *out_path)
 
 	ei->scan_bdesc = exfat_alloc_buffer(ei->exfat);
 	if (!ei->scan_bdesc) {
+		err = -ENOMEM;
+		goto err;
+	}
+
+	ei->dir_bitmap = calloc(1, EXFAT_BITMAP_SIZE(ei->exfat->clus_count));
+	if (!ei->dir_bitmap) {
 		err = -ENOMEM;
 		goto err;
 	}
@@ -417,6 +426,53 @@ static int read_upcase_table(struct exfat2img *ei,
 			     DIV_ROUND_UP(size, exfat->clus_size));
 }
 
+/*
+ * Clamp dir->size to its cluster chain. Stop at a cluster already used by
+ * a directory, there is a loop or a shared cluster.
+ */
+static int check_dir_clus_chain(struct exfat2img *ei, struct exfat_inode *dir)
+{
+	struct exfat *exfat = ei->exfat;
+	clus_t clus, next;
+	uint64_t count = 0, max_count;
+	int ret = 0;
+
+	clus = dir->first_clus;
+	max_count = DIV_ROUND_UP(dir->size, exfat->clus_size);
+
+	while (count < max_count) {
+		if (!exfat_heap_clus(exfat, clus)) {
+			ei_err(dir->parent, dir, "invalid cluster %#x\n", clus);
+			ret = -EINVAL;
+			break;
+		}
+		if (exfat_bitmap_get(ei->dir_bitmap, clus)) {
+			ei_err(dir->parent, dir,
+			       "cluster %#x is already used by a directory. truncated to %"
+			       PRIu64 " bytes\n",
+			       clus, count * exfat->clus_size);
+			ret = -EINVAL;
+			break;
+		}
+		exfat_bitmap_set(ei->dir_bitmap, clus);
+		count++;
+
+		if (exfat_get_inode_next_clus(exfat, dir, clus, &next)) {
+			ei_err(dir->parent, dir,
+			       "failed to read the fat entry of %#x\n", clus);
+			ret = -EIO;
+			break;
+		}
+		if (next == EXFAT_EOF_CLUSTER)
+			break;
+		clus = next;
+	}
+
+	if (count * exfat->clus_size < dir->size)
+		dir->size = count * exfat->clus_size;
+	return ret;
+}
+
 static int read_children(struct exfat2img *ei, struct exfat_inode *dir,
 			 off_t *end_file_offset)
 {
@@ -428,6 +484,9 @@ static int read_children(struct exfat2img *ei, struct exfat_inode *dir,
 	int ret;
 
 	*end_file_offset = 0;
+	if (check_dir_clus_chain(ei, dir))
+		exfat_stat.error_count++;
+
 	de_iter = &ei->de_iter;
 	ret = exfat_de_iter_init(de_iter, exfat, dir, ei->scan_bdesc);
 	if (ret == EOF)
