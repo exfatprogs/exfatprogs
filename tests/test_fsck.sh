@@ -6,6 +6,8 @@ IMAGE_FILE=exfat.img
 FSCK_PROG=${FSCK1:-"fsck.exfat"}
 FSCK_PROG_2=${FSCK2:-"fsck.exfat"}
 FSCK_OPTS="-y -s"
+DUMP_PROG=${DUMP1:-"dump.exfat"}
+EXFAT2IMG_PROG=${EXFAT2IMG1:-"exfat2img"}
 PASS_COUNT=0
 RUN_TIMEOUT=60
 
@@ -77,6 +79,17 @@ for TESTCASE in ${TESTCASE_LIST[*]}; do
 		cleanup
 	fi
 
+	# Run other utils to see if it copes well with the errors
+	# Exit codes are not checked
+	timeout $RUN_TIMEOUT $DUMP_PROG "$DEV_FILE" < /dev/null > /dev/null
+	ec=$?
+	raise_timeout $ec
+	[ $ec -ne 0 ] && echo "dump.exfat returned $ec"
+	timeout $RUN_TIMEOUT $EXFAT2IMG_PROG -o - "$DEV_FILE" < /dev/null > /dev/null
+	ec=$?
+	raise_timeout $ec
+	[ $ec -ne 0 ] && echo "exfat2img returned $ec"
+
 	# Run fsck for repair
 	timeout $RUN_TIMEOUT $FSCK_PROG $FSCK_OPTS "$DEV_FILE"
 	ec=$?
@@ -89,6 +102,17 @@ for TESTCASE in ${TESTCASE_LIST[*]}; do
 		fi
 		cleanup
 	fi
+
+	# Now the utils SHOULD be happy with the fixed volume.
+	# If not, fsck failed to do its job.
+	timeout $RUN_TIMEOUT $DUMP_PROG "$DEV_FILE" < /dev/null > /dev/null
+	ec=$?
+	raise_timeout $ec
+	[ $ec -ne 0 ] && echo "FAIL: dump.exfat returned $ec !!!" && exit 1
+	timeout $RUN_TIMEOUT $EXFAT2IMG_PROG -o - "$DEV_FILE" < /dev/null > /dev/null
+	ec=$?
+	raise_timeout $ec
+	[ $ec -ne 0 ] && echo "FAIL: dump.exfat returned $ec !!!" && exit 1
 
 	echo ""
 	# Run fsck again
