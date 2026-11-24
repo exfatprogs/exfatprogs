@@ -7,6 +7,7 @@ FSCK_PROG=${FSCK1:-"fsck.exfat"}
 FSCK_PROG_2=${FSCK2:-"fsck.exfat"}
 FSCK_OPTS="-y -s"
 PASS_COUNT=0
+RUN_TIMEOUT=60
 
 cleanup() {
 	echo ""
@@ -15,6 +16,14 @@ cleanup() {
 		exit 1
 	else
 		exit 0
+	fi
+}
+
+raise_timeout() {
+	if [ "$1" -eq 124 ]; then
+		echo ""
+		echo "Command timed out"
+		exit 124
 	fi
 }
 
@@ -58,7 +67,7 @@ for TESTCASE in ${TESTCASE_LIST[*]}; do
 	fi
 
 	# Run fsck to detect corruptions
-	$FSCK_PROG "$DEV_FILE" | grep -q "ERROR:\|corrupted"
+	timeout $RUN_TIMEOUT $FSCK_PROG "$DEV_FILE" | grep -q "ERROR:\|corrupted"
 	if [ $? -ne 0 ]; then
 		echo ""
 		echo "Failed to detect corruption for ${TESTCASE}"
@@ -69,8 +78,10 @@ for TESTCASE in ${TESTCASE_LIST[*]}; do
 	fi
 
 	# Run fsck for repair
-	$FSCK_PROG $FSCK_OPTS "$DEV_FILE"
-	if [ $? -ne 1 ] && [ $? -ne 0 ]; then
+	timeout $RUN_TIMEOUT $FSCK_PROG $FSCK_OPTS "$DEV_FILE"
+	ec=$?
+	raise_timeout $ec
+	if [ $ec -ne 1 ] && [ $ec -ne 0 ]; then
 		echo ""
 		echo "Failed to repair ${TESTCASE}"
 		if [ $NEED_LOOPDEV ]; then
@@ -81,8 +92,10 @@ for TESTCASE in ${TESTCASE_LIST[*]}; do
 
 	echo ""
 	# Run fsck again
-	$FSCK_PROG_2 "$DEV_FILE"
-	if [ $? -ne 0 ]; then
+	timeout $RUN_TIMEOUT $FSCK_PROG_2 "$DEV_FILE"
+	ec=$?
+	raise_timeout $ec
+	if [ $ec -ne 0 ]; then
 		echo ""
 		echo "Failed, corrupted ${TESTCASE}"
 		if [ $NEED_LOOPDEV ]; then
