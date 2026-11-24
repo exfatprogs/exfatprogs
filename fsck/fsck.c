@@ -175,6 +175,15 @@ static int check_clus_chain(struct exfat_de_iter *de_iter, int stream_idx,
 				return -EINVAL;
 		}
 
+		if (!exfat_heap_clus(exfat, clus)) {
+			if (!repair_file_ask(de_iter, node, ER_FILE_INVALID_CLUS,
+					     "cluster %#x is outside the cluster heap. truncate to %"
+					     PRIu64 " bytes",
+					     clus, count * exfat->clus_size))
+				return -EINVAL;
+			goto truncate_file;
+		}
+
 		/*
 		 * This cluster is already allocated. it may be shared with
 		 * the other file, or there is a loop in cluster chain.
