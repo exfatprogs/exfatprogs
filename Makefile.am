@@ -2,10 +2,11 @@
 
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = lib mkfs fsck tune label dump exfat2img upcase dosattr
+SUBDIRS = lib mkfs fsck tune label dump exfat2img upcase dosattr combine
 
 # manpages
-dist_man1_MANS =
+dist_man1_MANS =		\
+	manpages/exfatcombine.1
 dist_man8_MANS =		\
 	manpages/fsck.exfat.8	\
 	manpages/tune.exfat.8	\

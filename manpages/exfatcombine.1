@@ -1,0 +1,98 @@
+.TH exfatcombine 1
+.SH NAME
+exfatcombine \- append one file to another on exFAT without copying data
+.SH SYNOPSIS
+.B exfatcombine
+[
+.B \-v
+] [
+.B \-V
+] [
+.B \-h
+]
+.I DST
+.I SRC
+.SH DESCRIPTION
+.B exfatcombine
+moves the clusters of
+.I SRC
+to the end of
+.I DST
+on an exFAT filesystem using the
+.B EXFAT_IOC_COMBINE
+ioctl. Only the FAT and the directory entries are updated; the file data
+is not copied, so the time it takes does not depend on the size of
+.IR SRC .
+On success,
+.I DST
+grows by the size of
+.I SRC
+and
+.I SRC
+is removed: the kernel leaves it as an empty file and
+.B exfatcombine
+then removes it.
+.PP
+exFAT can only append clusters at a cluster boundary. If the size of
+.I DST
+is not a multiple of the cluster size, the kernel first pads
+.I DST
+with zeroes up to the next cluster boundary, so the combined file contains
+a zero-filled gap between the original data of
+.I DST
+and the data of
+.IR SRC .
+Applications have to account for that gap, for example by padding
+.I DST
+themselves with data that their file format skips. The cluster size is
+reported as the I/O block size by
+.BR stat (1).
+.PP
+Both files must be regular files on the same exFAT filesystem.
+.I SRC
+is opened for reading and writing,
+.I DST
+for writing.
+Removing
+.I SRC
+needs the same permissions as
+.BR rm (1).
+If it fails, the data has already been appended to
+.IR DST ,
+.I SRC
+is left as an empty file and
+.B exfatcombine
+exits with an error.
+.PP
+After a crash during the operation, both files may refer to the same
+clusters. Run
+.BR fsck.exfat (8)
+before modifying or removing
+.IR SRC .
+It keeps the data in one of the two files. After a crash right after the
+operation,
+.I SRC
+may be left as an empty file; it can then be removed.
+.SH OPTIONS
+.TP
+.BR \-v ", " \-\-verbose
+Print the offset in
+.I DST
+at which the data of
+.I SRC
+now starts, and the size of the zero padding.
+.TP
+.BR \-V ", " \-\-version
+Print the version number and exit.
+.TP
+.BR \-h ", " \-\-help
+Print help and exit.
+.SH EXIT STATUS
+.B exfatcombine
+exits with 0 on success and 1 on failure. It fails with "not supported" if
+the running kernel does not provide
+.BR EXFAT_IOC_COMBINE .
+.SH SEE ALSO
+.BR fsck.exfat (8),
+.BR ioctl (2),
+.BR stat (1)
