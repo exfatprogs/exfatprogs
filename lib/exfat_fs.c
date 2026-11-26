@@ -5,16 +5,41 @@
  *   Author(s): Hyunchul Lee <hyc.lee@gmail.com>
  */
 
+ /* Enable tdestroy() */
+#ifdef __linux__
+#define _GNU_SOURCE
+#else
+#define _BSD_SOURCE
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <search.h>
 
 #include "exfat_ondisk.h"
 #include "libexfat.h"
 
 #include "exfat_fs.h"
 #include "exfat_dir.h"
+
+/* Util callbacks for tsearch(), tfind() and tdestroy() */
+
+static void tree_freef(void *ptr)
+{
+	/* Do nothing: no memory is dynamically allocated on our end */
+	(void)ptr;
+}
+
+static int tree_compf(const void *a, const void *b)
+{
+	if ((uintptr_t)a == (uintptr_t)b)
+		return 0;
+	if ((uintptr_t)a < (uintptr_t)b)
+		return -1;
+	return 1;
+}
 
 struct exfat_inode *exfat_alloc_inode(__u16 attr)
 {
@@ -69,10 +94,14 @@ void exfat_free_file_children(struct exfat_inode *dir)
 	exfat_free_children(dir, true);
 }
 
-/* delete @child and all ancestors that does not have
- * children
- */
 void exfat_free_ancestors(struct exfat_inode *child)
+{
+	exfat_free_ancestors2(child, NULL, NULL);
+}
+
+void exfat_free_ancestors2(struct exfat_inode *child,
+		void (*cull_cb)(struct exfat_inode *child, void *ctx),
+		void *cb_ctx)
 {
 	struct exfat_inode *parent;
 
@@ -81,12 +110,15 @@ void exfat_free_ancestors(struct exfat_inode *child)
 			return;
 
 		parent = child->parent;
+
+		if (cull_cb != NULL)
+			cull_cb(child, cb_ctx);
+
 		list_del(&child->sibling);
 		exfat_free_inode(child);
 
 		child = parent;
 	}
-	return;
 }
 
 void exfat_free_dir_list(struct exfat *exfat)
@@ -115,6 +147,8 @@ void exfat_free_exfat(struct exfat *exfat)
 	exfat_free_inode(exfat->root);
 	if (exfat->lookup_buffer)
 		exfat_free_buffer(exfat, exfat->lookup_buffer);
+	if (exfat->dir_clus_tree)
+		tdestroy(exfat->dir_clus_tree, tree_freef);
 
 	free(exfat);
 }
@@ -313,4 +347,36 @@ int exfat_resolve_path_parent(struct path_resolve_ctx *ctx,
 	ret = exfat_resolve_path(ctx, child);
 	child->parent = old;
 	return ret;
+}
+
+bool exfat_add_dir_clus_tree(struct exfat *exfat, clus_t dir_clus)
+{
+	void *ret;
+
+	ret = tsearch((void *)(uintptr_t)dir_clus, &exfat->dir_clus_tree, tree_compf);
+	if (ret) {
+		exfat->dir_clus_tree_size++;
+		return true;
+	}
+	return false;
+}
+
+bool exfat_has_dir_clus_tree(struct exfat *exfat, clus_t dir_clus)
+{
+	void *ret;
+
+	ret = tfind((void *)(uintptr_t)dir_clus, &exfat->dir_clus_tree, tree_compf);
+	return ret != NULL;
+}
+
+bool exfat_del_dir_clus_tree(struct exfat *exfat, clus_t dir_clus)
+{
+	void *ret;
+
+	ret = tdelete((void *)(uintptr_t)dir_clus, &exfat->dir_clus_tree, tree_compf);
+	if (ret) {
+		exfat->dir_clus_tree_size--;
+		return true;
+	}
+	return false;
 }

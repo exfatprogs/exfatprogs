@@ -40,6 +40,7 @@ static void usage(void)
 	fprintf(stderr, "\t-c | --cluster-chain      Show cluster chain\n");
 	fprintf(stderr, "\t-s | --scan-dir=dir-path  Scan and show directory entry sets\n");
 	fprintf(stderr, "\t-r | --recursive          Scan and show directory entry sets recursively\n");
+	fprintf(stderr, "\t-M | --max-depth          Set max depth when scanning directories recursively\n");
 	fprintf(stderr, "\t-V | --version            Show version\n");
 	fprintf(stderr, "\t-h | --help               Show help\n");
 
@@ -50,6 +51,7 @@ static struct option opts[] = {
 	{"dentry-set",		required_argument,	NULL,	'd' },
 	{"scan-dir",		required_argument,	NULL,	's' },
 	{"recursive",		no_argument,		NULL,	'r' },
+	{"max-depth",		required_argument,	NULL,	'M' },
 	{"cluster-chain",	no_argument,		NULL,	'c' },
 	{"version",		no_argument,		NULL,	'V' },
 	{"help",		no_argument,		NULL,	'h' },
@@ -794,7 +796,7 @@ free_inode:
  *         sets recursively.
  */
 static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
-		const char *path, uint32_t flags)
+		const char *path, uint32_t flags, const unsigned long max_depth)
 {
 	int ret, dentry_count, len;
 	struct buffer_desc *scan_bdesc;
@@ -803,9 +805,16 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 	struct exfat_inode *inode;
 	char new_path[PATH_MAX];
 
+	if (exfat->dir_clus_tree_size > max_depth)
+		return 0;
+
 	scan_bdesc = exfat_alloc_buffer(exfat);
-	if (!scan_bdesc)
+	if (!scan_bdesc || !exfat_add_dir_clus_tree(exfat, dir->first_clus)) {
+		exfat_err("Failed to allocate memory. Unable to continue.\n");
+		if (scan_bdesc)
+			exfat_free_buffer(exfat, scan_bdesc);
 		return -ENOMEM;
+	}
 
 	ret = exfat_de_iter_init(&de_iter, exfat, dir, scan_bdesc);
 	if (ret == EOF) {
@@ -847,8 +856,14 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 			exfat_show_dentry_set(exfat, inode, dir->is_contiguous, flags);
 			if ((inode->attr & ATTR_SUBDIR) &&
 			    (flags & DUMP_SCAN_DIR_RECURSIVE)) {
-				ret = exfat_scan_dentry_set(exfat, inode,
-						new_path, flags);
+				if (exfat_has_dir_clus_tree(exfat, inode->first_clus)) {
+					exfat_err("Directory loop detected. "
+						  "Refusing to continue. Please run fsck.exfat.\n");
+					ret = -ELOOP;
+				} else
+					ret = exfat_scan_dentry_set(exfat, inode, new_path, flags,
+							max_depth);
+
 				if (ret) {
 					exfat_free_inode(inode);
 					goto free_buffer;
@@ -869,17 +884,23 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 	}
 
 free_buffer:
+	exfat_del_dir_clus_tree(exfat, dir->first_clus);
 	exfat_free_buffer(exfat, scan_bdesc);
 
 	return ret;
 }
 
 static int exfat_show_dentry_set_by_path(struct exfat *exfat, const char *path,
-		uint32_t flags)
+		uint32_t flags, const unsigned long max_depth)
 {
 	int ret;
 	bool dir_is_contiguous;
 	struct exfat_inode *inode;
+
+	if (!exfat_add_dir_clus_tree(exfat, exfat->root->first_clus)) {
+		exfat_err("Failed to allocate memory. Unable to continue.\n");
+		return -ENOMEM;
+	}
 
 	ret = exfat_create_inode_by_path(exfat, path, &inode,
 			&dir_is_contiguous);
@@ -892,7 +913,7 @@ static int exfat_show_dentry_set_by_path(struct exfat *exfat, const char *path,
 			goto out;
 		}
 
-		ret = exfat_scan_dentry_set(exfat, inode, path, flags);
+		ret = exfat_scan_dentry_set(exfat, inode, path, flags, max_depth);
 		goto out;
 	}
 
@@ -926,6 +947,7 @@ int main(int argc, char *argv[])
 	struct exfat *exfat;
 	const char *path = NULL;
 	uint32_t flags = 0;
+	unsigned long max_depth = ULONG_MAX;
 
 	exfat_init_blk_dev_info(&bd);
 	exfat_init_user_input(&ui);
@@ -934,7 +956,7 @@ int main(int argc, char *argv[])
 	setlocale(LC_ALL, "");
 
 	opterr = 0;
-	while ((c = getopt_long(argc, argv, "iVhd:s:rc", opts, NULL)) != EOF)
+	while ((c = getopt_long(argc, argv, "iVhd:s:rcM:", opts, NULL)) != EOF)
 		switch (c) {
 		case 'V':
 			version_only = true;
@@ -951,6 +973,13 @@ int main(int argc, char *argv[])
 			break;
 		case 'c':
 			flags |= DUMP_CLUSTER_CHAIN;
+			break;
+		case 'M':
+			if (exfat_parse_ulong(optarg, &max_depth)) {
+				exfat_err("invalid max depth: %s\n", optarg);
+				ret = -EINVAL;
+				goto out;
+			}
 			break;
 		case '?':
 		case 'h':
@@ -978,7 +1007,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (path)
-		ret = exfat_show_dentry_set_by_path(exfat, path, flags);
+		ret = exfat_show_dentry_set_by_path(exfat, path, flags, max_depth);
 	else
 		ret = exfat_show_fs_info(exfat);
 
