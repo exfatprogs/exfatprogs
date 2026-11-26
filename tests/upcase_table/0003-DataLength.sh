@@ -1,12 +1,13 @@
 #! /bin/sh
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+DUMP_PROG=${DUMP_PROG:-"dump.exfat"}
 img=${1:-"exfat.img"}
 
 truncate -s 32M $img
 mkfs.exfat $img >> /dev/null
 
-dump_info=$(dump.exfat $img)
+dump_info=$($DUMP_PROG $img)
 upcase_entry_off=$(echo "${dump_info}" | grep "Upcase table entry position:" | cut -d ':' -f 2)
 size_off=$((${upcase_entry_off}+24))
 

@@ -1,11 +1,12 @@
 #! /bin/sh
 # SPDX-License-Identifier: GPL-2.0-or-later
 
+DUMP_PROG=${DUMP_PROG:-"dump.exfat"}
 img=${1:-"exfat.img"}
 
 truncate -s 32M $img
 mkfs.exfat $img >> /dev/null
-dump_info=$(dump.exfat $img)
+dump_info=$($DUMP_PROG $img)
 clu_heap_off=$(echo "${dump_info}" | grep "Cluster Heap Offset (sector offset):" | cut -d ':' -f 2)
 upcase_clu=$(echo "${dump_info}" | grep "Upcase table start cluster:" | cut -d ':' -f 2)
 clu_size=$(echo "${dump_info}" | grep "Cluster size:" | cut -d ':' -f 2)
