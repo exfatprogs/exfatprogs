@@ -34,6 +34,7 @@ AC_CONFIG_FILES([
 	exfat2img/Makefile
 	upcase/Makefile
 	dosattr/Makefile
+	combine/Makefile
 ])
 
 AC_CHECK_HEADERS([fts.h], [have_fts_h="yes"])

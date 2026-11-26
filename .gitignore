@@ -50,3 +50,4 @@ autom4te.cache
 /tune/tune.exfat
 /dosattr/lsdosattr
 /dosattr/chdosattr
+/combine/exfatcombine
