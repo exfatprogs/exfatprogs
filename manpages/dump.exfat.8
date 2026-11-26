@@ -25,7 +25,9 @@ dump.exfat \- Show on-disk information of exfat filesystem
 .B dump.exfat
 Print on-disk information from given device that formatted by exFAT filesystem.
 
-Note: For printing information of directory entries, the absence of "double-link" does not indicate the cluster is not doubly allocated if the scan is not started from the root directory with the recursive option.
+Note: For printing information of directory entries, the absence of
+"double-link" does not indicate the cluster is not doubly allocated if the scan
+is not started from the root directory with the recursive option.
 
 .PP
 .SH OPTIONS
@@ -34,13 +36,14 @@ Note: For printing information of directory entries, the absence of "double-link
 Prints the version number and exits.
 .TP
 .BR \-d ", " \-\-dentry-set=\fIpath\fR
-Print information of directory entries from a given path that exits in the given device.
+Print information of directory entries from a given path.
 .TP
 .BR \-s ", " \-\-scan-dir=\fIdir-path\fR
-Scan and print information of directory entries from a given path that exits in the given device.
+Scan and print information of directory entries from a given path.
 .TP
 .BR \-r ", " \-\-recursive
-Scan and print information of directory entries from a given path recursively that exits in the given device. Only works with -s option.
+Scan and print information of directory entries from a given path recursively.
+Only works with -s option.
 .TP
 .BR \-M ", " \-\-max\-depth=\fIlevels\fR
 When scanning directory entries recursively, descend at most \fIlevels\fR(a
@@ -48,4 +51,5 @@ non-negative integer) levels of directories below the starting-points(the root
 directory). Using \fB0\fR means no traversal at all.
 .TP
 .BR \-c ", " \-\-cluster-chain
-Print the cluster chain while printing the directory entry information. Only works with -d/-s option.
+Print the cluster chain while printing the directory entry information. Only
+works with -d/-s option.
