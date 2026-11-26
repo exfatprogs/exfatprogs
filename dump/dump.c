@@ -804,8 +804,12 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 	char new_path[PATH_MAX];
 
 	scan_bdesc = exfat_alloc_buffer(exfat);
-	if (!scan_bdesc)
+	if (!scan_bdesc || !exfat_add_dir_clus_tree(exfat, dir->first_clus)) {
+		exfat_err("Failed to allocate memory. Unable to continue.\n");
+		if (scan_bdesc)
+			exfat_free_buffer(exfat, scan_bdesc);
 		return -ENOMEM;
+	}
 
 	ret = exfat_de_iter_init(&de_iter, exfat, dir, scan_bdesc);
 	if (ret == EOF) {
@@ -847,8 +851,13 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 			exfat_show_dentry_set(exfat, inode, dir->is_contiguous, flags);
 			if ((inode->attr & ATTR_SUBDIR) &&
 			    (flags & DUMP_SCAN_DIR_RECURSIVE)) {
-				ret = exfat_scan_dentry_set(exfat, inode,
-						new_path, flags);
+				if (exfat_has_dir_clus_tree(exfat, inode->first_clus)) {
+					exfat_err("Directory loop detected. "
+						  "Refusing to continue. Please run fsck.exfat.\n");
+					ret = -ELOOP;
+				} else
+					ret = exfat_scan_dentry_set(exfat, inode, new_path, flags);
+
 				if (ret) {
 					exfat_free_inode(inode);
 					goto free_buffer;
@@ -869,6 +878,7 @@ static int exfat_scan_dentry_set(struct exfat *exfat, struct exfat_inode *dir,
 	}
 
 free_buffer:
+	exfat_del_dir_clus_tree(exfat, dir->first_clus);
 	exfat_free_buffer(exfat, scan_bdesc);
 
 	return ret;
@@ -880,6 +890,11 @@ static int exfat_show_dentry_set_by_path(struct exfat *exfat, const char *path,
 	int ret;
 	bool dir_is_contiguous;
 	struct exfat_inode *inode;
+
+	if (!exfat_add_dir_clus_tree(exfat, exfat->root->first_clus)) {
+		exfat_err("Failed to allocate memory. Unable to continue.\n");
+		return -ENOMEM;
+	}
 
 	ret = exfat_create_inode_by_path(exfat, path, &inode,
 			&dir_is_contiguous);

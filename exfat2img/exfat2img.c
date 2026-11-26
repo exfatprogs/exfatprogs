@@ -456,6 +456,11 @@ static int read_children(struct exfat2img *ei, struct exfat_inode *dir,
 
 			if (node) {
 				if ((node->attr & ATTR_SUBDIR) && node->size) {
+					if (exfat_has_dir_clus_tree(exfat, node->first_clus))
+						goto loop_det;
+					if (!exfat_add_dir_clus_tree(exfat, node->first_clus))
+						goto nomem;
+
 					node->parent = dir;
 					list_add_tail(&node->sibling,
 						      &dir->children);
@@ -493,11 +498,41 @@ out:
 	*end_file_offset = exfat_de_iter_file_offset(de_iter);
 	exfat_de_iter_flush(de_iter);
 	return 0;
+nomem:
+	exfat_err("Failed to allocate memory. Unable to continue.\n");
+	ret = -ENOMEM;
+	goto err;
+loop_det:
+	exfat_err("Directory loop detected. Refusing to continue. Please run fsck.exfat.\n");
+	ret = -ELOOP;
+	goto err;
 err:
+	exfat_free_inode(node);
 	exfat_free_children(dir, false);
 	INIT_LIST_HEAD(&dir->children);
 	exfat_de_iter_flush(de_iter);
 	return ret;
+}
+
+/*
+ * Tracing back up the lineage, remove cluster numbers of directories that no
+ * longer have children
+ *
+ * During traversal, exfat->dir_clus_tree is maintained to detect circular
+ * directory structure. This looks unnecessarily complicated, but as exfat2img
+ * traverses directories breadth-first, exfat->dir_clus_tree cannot be used as
+ * like a linear stack-like queue.
+ *
+ * When a directory has no children, only then it's safe to assume that a
+ * circular directory path is not possible with that particular directory.
+ * Technically, we COULD keep all the cluster numbers of directories in the
+ * volume, but that would be wasteful.
+ *
+ * See also: exfat_free_ancestors2()
+ */
+static void prune_dir_clus_tree(struct exfat_inode *leaf, void *ctx)
+{
+	exfat_del_dir_clus_tree(ctx, leaf->first_clus);
 }
 
 static int dump_filesystem(struct exfat2img *ei)
@@ -511,6 +546,11 @@ static int dump_filesystem(struct exfat2img *ei)
 	if (!exfat->root) {
 		exfat_err("root is NULL\n");
 		return -ENOENT;
+	}
+
+	if (!exfat_add_dir_clus_tree(exfat, exfat->root->first_clus)) {
+		exfat_err("Failed to allocate memory. Unable to continue.\n");
+		return -ENOMEM;
 	}
 
 	list_add(&exfat->root->list, &exfat->dir_list);
@@ -528,10 +568,16 @@ static int dump_filesystem(struct exfat2img *ei)
 		}
 
 		dir_errors = read_children(ei, dir, &end_file_offset);
-		if (!dir_errors) {
+		switch (dir_errors) {
+		case -ENOMEM:
+		case -ELOOP:
+			ret = dir_errors;
+			goto out;
+		case 0:
 			dump_directory(ei, dir, (size_t)end_file_offset,
 				       &clus_count);
-		} else if (dir_errors) {
+			break;
+		default:
 			dump_directory(ei, dir, (size_t)-1,
 				       &clus_count);
 			exfat_resolve_path(&path_resolve_ctx, dir);
@@ -541,7 +587,7 @@ static int dump_filesystem(struct exfat2img *ei)
 		}
 
 		list_del(&dir->list);
-		exfat_free_ancestors(dir);
+		exfat_free_ancestors2(dir, prune_dir_clus_tree, exfat);
 	}
 out:
 	exfat_free_dir_list(exfat);
@@ -964,7 +1010,9 @@ int main(int argc, char * const argv[])
 		goto out;
 	}
 
-	dump_filesystem(&ei);
+	err = dump_filesystem(&ei);
+	if (err)
+		goto out;
 
 	if (ei.is_stdout) {
 		err = dump_header(&ei);

@@ -47,6 +47,15 @@ struct exfat {
 	clus_t			start_clu;
 	unsigned int		buffer_count;
 	struct buffer_desc	*lookup_buffer; /* for dentry set lookup */
+	/*
+	 * btree of directory start clusters for recursive directory traversal
+	 *
+	 * Contains cluster numbers of parent directories.
+	 *
+	 * See also: exfat_fsck.name_hash_tree
+	 */
+	void			*dir_clus_tree;
+	size_t			dir_clus_tree_size;
 };
 
 struct exfat_dentry_loc {
@@ -77,7 +86,21 @@ void exfat_free_inode(struct exfat_inode *node);
 
 void exfat_free_children(struct exfat_inode *dir, bool file_only);
 void exfat_free_file_children(struct exfat_inode *dir);
+/*
+ * Delete @child and all ancestors with no children
+ *
+ * This is a non-callback version of exfat_free_ancestors2().
+ */
 void exfat_free_ancestors(struct exfat_inode *child);
+/*
+ * Delete all the ancestors with no children, calling the callback before
+ * freeing each node
+ *
+ * To disable callbacks, pass cull_cb as NULL.
+ */
+void exfat_free_ancestors2(struct exfat_inode *child,
+		void (*cull_cb)(struct exfat_inode *child, void *ctx),
+		void *cb_ctx);
 void exfat_free_dir_list(struct exfat *exfat);
 
 int exfat_resolve_path(struct path_resolve_ctx *ctx, struct exfat_inode *child);
@@ -86,6 +109,26 @@ int exfat_resolve_path_parent(struct path_resolve_ctx *ctx,
 
 struct buffer_desc *exfat_alloc_buffer(struct exfat *exfat);
 void exfat_free_buffer(const struct exfat *exfat, struct buffer_desc *bd);
+
+/*
+ * Add a cluster number to the tree
+ *
+ * Returns true if the cluster number has been successfully added to the tree.
+ * Returns false otherwise and errno would probably be set to ENOMEM.
+ */
+bool exfat_add_dir_clus_tree(struct exfat *exfat, clus_t dir_clus);
+/*
+ * Try finding the cluster number in the tree and return true if found. Returns
+ * false otherwise.
+ */
+bool exfat_has_dir_clus_tree(struct exfat *exfat, clus_t dir_clus);
+/*
+ * Delete the cluster number from the tree
+ *
+ * The function always succeeds. Returns true if the cluster number was found in
+ * the tree and has been deleted. Returns false otherwise.
+ */
+bool exfat_del_dir_clus_tree(struct exfat *exfat, clus_t dir_clus);
 
 static inline unsigned int exfat_get_read_size(const struct exfat *exfat)
 {
