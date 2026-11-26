@@ -449,6 +449,8 @@ static int read_children(struct exfat2img *ei, struct exfat_inode *dir,
 		switch (dentry->type) {
 		case EXFAT_FILE:
 			ret = read_file(de_iter, &node, &dentry_count);
+			if (ret == -ENOMEM)
+				goto nomem;
 			if (ret < 0) {
 				exfat_stat.error_count++;
 				break;
